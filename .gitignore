@@ -1,0 +1,14 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.env
+.env.*
+spikes/**/output/
+test-results/
+playwright-report/
+
+# Marca local (nome, cores, logo e ícone de outra marca). Ver scripts/branding.mjs.
+branding.local/
+branding.local.json
