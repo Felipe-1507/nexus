@@ -12,6 +12,19 @@ export type PermissionMode = z.infer<typeof permissionModeSchema>;
 export const permissionDecisionSchema = z.enum(['allow_once', 'allow_always', 'deny']);
 export type PermissionDecision = z.infer<typeof permissionDecisionSchema>;
 
+/** Pergunta com opções feita pelo Claude (ferramenta AskUserQuestion). */
+export const claudeQuestionSchema = z.object({
+  question: z.string(),
+  header: z.string(),
+  multiSelect: z.boolean(),
+  options: z.array(z.object({ label: z.string(), description: z.string() })),
+});
+export type ClaudeQuestion = z.infer<typeof claudeQuestionSchema>;
+
+/** Respostas às perguntas: texto da pergunta -> opção escolhida (várias, separadas por vírgula; ou texto livre). */
+export const questionAnswersSchema = z.record(z.string().max(2000), z.string().max(2000));
+export type QuestionAnswers = z.infer<typeof questionAnswersSchema>;
+
 /** Pedido de aprovação esperando o usuário. */
 export const permissionRequestSchema = z.object({
   id: z.string(),
@@ -24,6 +37,8 @@ export const permissionRequestSchema = z.object({
   detail: z.string().optional(),
   /** Texto do botão "Sempre permitir…", quando a ação admite uma regra. */
   alwaysLabel: z.string().optional(),
+  /** Presente quando o Claude está perguntando em vez de pedir permissão. */
+  questions: z.array(claudeQuestionSchema).optional(),
   createdAt: z.string(),
 });
 export type PermissionRequest = z.infer<typeof permissionRequestSchema>;

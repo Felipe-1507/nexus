@@ -28,8 +28,8 @@ export function permissionHandlers(deps: {
   return {
     'chat:undo': ({ conversationId, messageId, dryRun }) => chat.undo(conversationId, messageId, dryRun),
     'workspaces:setPermissionMode': ({ id, mode }) => workspaces.setPermissionMode(id, mode),
-    'permissions:respond': ({ requestId, decision }) => {
-      permissions.respond(requestId, decision);
+    'permissions:respond': ({ requestId, decision, answers }) => {
+      permissions.respond(requestId, decision, answers);
       return null;
     },
     'permissions:pending': () => permissions.pending(),

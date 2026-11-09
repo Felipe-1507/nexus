@@ -98,6 +98,29 @@ test.describe('com o Claude Code real', () => {
     }
   });
 
+  test('o Claude pergunta com opções, o usuário escolhe e a resposta volta para ele', async () => {
+    const { app, page, userData } = await launchApp(undefined, options);
+    try {
+      await createWorkspace(page, 'Pergunta');
+      await expect(composer(page)).toBeEnabled({ timeout: 30_000 });
+      await composer(page).fill(
+        'Use a ferramenta AskUserQuestion para me perguntar qual cor eu prefiro, com as opções "Azul" e "Verde". ' +
+          'Depois responda só com a cor que eu escolhi.',
+      );
+      await composer(page).press('Enter');
+      const card = page.getByTestId('question-card');
+      await expect(card).toBeVisible({ timeout: 120_000 });
+      await expect(page.getByTestId('permission-card')).toHaveCount(0);
+      await expect(card.getByRole('button', { name: 'Responder' })).toBeDisabled();
+      await card.getByRole('radio', { name: /Verde/ }).check();
+      await card.getByRole('button', { name: 'Responder' }).click();
+      await expect(lastAnswer(page)).toContainText(/verde/i, { timeout: 120_000 });
+    } finally {
+      await app.close();
+      removeUserData(userData);
+    }
+  });
+
   test('modo Perguntar: negar não cria, permitir cria, e tudo fica registrado', async () => {
     const { app, page, userData } = await launchApp(undefined, options);
     try {

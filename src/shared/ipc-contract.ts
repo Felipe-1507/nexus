@@ -38,6 +38,7 @@ import {
   auditEntrySchema,
   permissionDecisionSchema,
   permissionModeSchema,
+  questionAnswersSchema,
   permissionRequestSchema,
   permissionRuleSchema,
 } from './permissions';
@@ -193,7 +194,11 @@ export const ipcContract = {
     output: workspaceSchema,
   },
   'permissions:respond': {
-    input: z.object({ requestId: z.string().min(1), decision: permissionDecisionSchema }),
+    input: z.object({
+      requestId: z.string().min(1),
+      decision: permissionDecisionSchema,
+      answers: questionAnswersSchema.optional(),
+    }),
     output: z.null(),
   },
   'permissions:pending': { input: z.undefined(), output: z.array(permissionRequestSchema) },

@@ -47,6 +47,49 @@ async function answerNext(decision: 'allow_once' | 'allow_always' | 'deny'): Pro
   throw new Error('nenhum pedido apareceu');
 }
 
+describe('perguntas do Claude (AskUserQuestion)', () => {
+  const input = {
+    questions: [
+      {
+        question: 'Qual pasta usar?',
+        header: 'Pasta',
+        multiSelect: false,
+        options: [
+          { label: 'img', description: 'a pasta atual' },
+          { label: 'assets', description: 'a nova' },
+        ],
+      },
+    ],
+  };
+
+  it('mostra as opções, devolve a resposta ao Claude e não entra na auditoria', async () => {
+    const canUse = service.canUseToolFor({ ...scope, mode: 'read_only' });
+    const result = canUse('AskUserQuestion', input, opts());
+    for (let i = 0; i < 50 && !service.pending()[0]; i++) await new Promise((r) => setTimeout(r, 1));
+    const req = service.pending()[0]!;
+    expect(req.questions?.[0]?.options).toHaveLength(2);
+    service.respond(req.id, 'allow_once', { 'Qual pasta usar?': 'assets' });
+    expect(await result).toEqual({
+      behavior: 'allow',
+      updatedInput: { ...input, answers: { 'Qual pasta usar?': 'assets' } },
+    });
+    expect(service.listAudit(scope.workspaceId)).toEqual([]);
+  });
+
+  it('dispensar devolve uma negação que orienta o Claude a seguir com uma suposição', async () => {
+    const canUse = service.canUseToolFor(scope);
+    const result = canUse('AskUserQuestion', input, opts());
+    await answerNext('deny');
+    expect(await result).toMatchObject({ behavior: 'deny', message: expect.stringContaining('dispensou') });
+  });
+
+  it('recusa perguntas em formato inválido sem incomodar o usuário', async () => {
+    const result = await service.canUseToolFor(scope)('AskUserQuestion', { questions: 'oi' }, opts());
+    expect(result).toMatchObject({ behavior: 'deny' });
+    expect(service.pending()).toEqual([]);
+  });
+});
+
 describe('PermissionsService', () => {
   it('libera leitura dentro do Workspace sem perguntar nem registrar', async () => {
     const canUse = service.canUseToolFor(scope);

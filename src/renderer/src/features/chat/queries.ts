@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import type { Attachment, ChatEvent, ChatMessage, SendMessageInput } from '@shared/chat';
-import type { PermissionDecision } from '@shared/permissions';
+import type { PermissionDecision, QuestionAnswers } from '@shared/permissions';
 import { invoke } from '@renderer/lib/ipc';
 import { refreshUsage } from '@renderer/features/claude/usage';
 import { useChat } from './chat-store';
@@ -104,7 +104,8 @@ export function useArchiveConversation() {
 
 export function useRespondPermission() {
   return useMutation({
-    mutationFn: (input: { requestId: string; decision: PermissionDecision }) => invoke('permissions:respond', input),
+    mutationFn: (input: { requestId: string; decision: PermissionDecision; answers?: QuestionAnswers }) =>
+      invoke('permissions:respond', input),
   });
 }
 

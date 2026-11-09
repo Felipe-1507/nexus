@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk';
+import { z } from 'zod';
 import { NexusError } from '@shared/ipc-result';
 import type {
   AuditEntry,
@@ -8,7 +9,9 @@ import type {
   PermissionMode,
   PermissionRequest,
   PermissionRule,
+  QuestionAnswers,
 } from '@shared/permissions';
+import { claudeQuestionSchema } from '@shared/permissions';
 import type { PermissionBroker } from '../../agent/permission-broker';
 import { decide, describeRequest, describeRule, suggestRule } from '../../agent/permission-policy';
 import { PermissionsRepo } from '../../persistence/repositories/permissions-repo';
@@ -44,6 +47,7 @@ export class PermissionsService {
 
   canUseToolFor(scope: PermissionScope): CanUseTool {
     return async (tool, input, options) => {
+      if (tool === 'AskUserQuestion') return this.askQuestions(scope, input, options.signal);
       const record = (decision: 'allow' | 'deny', decidedBy: AuditEntry['decidedBy']) => {
         const { title, detail } = describeRequest(tool, input);
         this.repo.audit({
@@ -114,8 +118,42 @@ export class PermissionsService {
     };
   }
 
-  respond(requestId: string, decision: PermissionDecision): void {
-    this.broker.respond(requestId, decision);
+  /**
+   * O Claude perguntando ao usuário (ferramenta AskUserQuestion). Não é um pedido de permissão: a tela mostra as
+   * opções, e a resposta volta ao Claude em `answers`. Vale em qualquer modo, inclusive somente leitura.
+   */
+  private async askQuestions(
+    scope: PermissionScope,
+    input: Record<string, unknown>,
+    signal: AbortSignal,
+  ): ReturnType<CanUseTool> {
+    const parsed = z.array(claudeQuestionSchema).safeParse(input.questions);
+    if (!parsed.success || parsed.data.length === 0) {
+      return { behavior: 'deny', message: 'Perguntas em formato inválido. Pergunte no próprio texto da resposta.' };
+    }
+    const { answer, answers } = await this.broker.askWithAnswers(
+      {
+        conversationId: scope.conversationId,
+        workspaceId: scope.workspaceId,
+        tool: 'AskUserQuestion',
+        title: 'Fazer uma pergunta',
+        questions: parsed.data,
+      },
+      signal,
+    );
+    if (answer === 'allow_once' && answers) return { behavior: 'allow', updatedInput: { ...input, answers } };
+    if (answer === 'cancel') return { behavior: 'deny', message: 'O usuário interrompeu a resposta.', interrupt: true };
+    return {
+      behavior: 'deny',
+      message:
+        answer === 'timeout'
+          ? 'O usuário não respondeu à pergunta a tempo. Siga com a melhor suposição e diga qual foi.'
+          : 'O usuário dispensou a pergunta. Siga com a melhor suposição e diga qual foi, ou pergunte no texto.',
+    };
+  }
+
+  respond(requestId: string, decision: PermissionDecision, answers?: QuestionAnswers): void {
+    this.broker.respond(requestId, decision, answers);
   }
 
   pending(): PermissionRequest[] {

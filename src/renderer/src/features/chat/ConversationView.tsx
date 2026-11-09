@@ -18,6 +18,7 @@ import { FileLinkProvider } from './file-link-context';
 import { Composer } from './Composer';
 import { Details, MessageItem } from './MessageItem';
 import { PermissionCard } from './PermissionCard';
+import { QuestionCard } from './QuestionCard';
 import { SyncButton } from './SyncButton';
 import {
   useConversations,
@@ -179,7 +180,12 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
 
         <div className="mx-auto w-full max-w-3xl px-6 pb-6">
           <ConnectClaude className="mb-3" />
-          {pending?.[0] && <PermissionCard request={pending[0]} queued={pending.length - 1} />}
+          {pending?.[0] &&
+            (pending[0].questions ? (
+              <QuestionCard key={pending[0].id} request={pending[0]} queued={pending.length - 1} />
+            ) : (
+              <PermissionCard request={pending[0]} queued={pending.length - 1} />
+            ))}
           {conversationId && (queue.length > 0 || queueError) && (
             <QueueList
               items={queue}
