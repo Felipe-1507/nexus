@@ -14,6 +14,9 @@ type CodeHandlers = Pick<
   | 'code:openLink'
   | 'code:import'
   | 'code:delete'
+  | 'code:copy'
+  | 'code:rename'
+  | 'code:reveal'
 >;
 
 export function codeHandlers(deps: {
@@ -41,6 +44,12 @@ export function codeHandlers(deps: {
     'code:import': (i) => code.importPaths(scope(i), i.dir, i.sources),
     'code:delete': async (i) => {
       await code.remove(scope(i), i.path);
+      return null;
+    },
+    'code:copy': (i) => code.copyEntries(scope(i), i.dir, i.paths),
+    'code:rename': (i) => code.rename(scope(i), i.path, i.name),
+    'code:reveal': async (i) => {
+      await code.reveal(scope(i), i.path);
       return null;
     },
     'code:relative': async (i) => ({ path: await code.relativeTo(scope(i), i.absolute) }),

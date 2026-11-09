@@ -196,6 +196,7 @@ function bootstrap(): void {
     workspaces,
     projects,
     trash: (target) => shell.trashItem(target),
+    reveal: (target) => shell.showItemInFolder(target),
     protectedDirs: [paths.userData],
   });
   const attachments = new AttachmentService({

@@ -161,6 +161,59 @@ test('colar arquivos e pastas copiados do Explorer, soltar nelas, e excluir (vai
   }
 });
 
+test('botão direito na árvore: copiar, colar, renomear e ver no Explorer', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Menu');
+    fs.mkdirSync(path.join(ws.rootPath, 'src'));
+    fs.mkdirSync(path.join(ws.rootPath, 'dest'));
+    fs.writeFileSync(path.join(ws.rootPath, 'src', 'a.txt'), 'a');
+    await page.reload();
+    await page.getByTestId('chat-view').waitFor();
+
+    const section = page.getByTestId('folder-section');
+    const tree = section.getByRole('tree', { name: 'Arquivos' });
+    const entry = (name: string) => tree.getByRole('button', { name, exact: true });
+    const menu = page.getByTestId('tree-menu');
+
+    // Copiar a pasta "src" e colar em "dest" pelo menu.
+    await entry('src').click({ button: 'right' });
+    await expect(menu.getByRole('menuitem')).toHaveText([
+      /Copiar/,
+      /Colar em src/,
+      /Renomear/,
+      /Ver no Explorer/,
+      /Excluir/,
+    ]);
+    await expect(menu.getByRole('menuitem', { name: /Colar/ })).toBeDisabled();
+    await menu.getByRole('menuitem', { name: 'Copiar' }).click();
+    await expect(menu).toHaveCount(0);
+    await entry('dest').click({ button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Colar em dest' }).click();
+    await expect(section.getByTestId('tree-notice')).toHaveText('1 item colado em dest.');
+    expect(fs.readFileSync(path.join(ws.rootPath, 'dest', 'src', 'a.txt'), 'utf8')).toBe('a');
+
+    // Renomear pelo menu.
+    await entry('dest').click({ button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Renomear' }).click();
+    const dialog = page.getByRole('dialog', { name: /Renomear: dest/ });
+    await dialog.getByRole('textbox', { name: 'Novo nome' }).fill('destino');
+    await dialog.getByRole('button', { name: 'Renomear' }).click();
+    await expect(entry('destino')).toBeVisible();
+    expect(fs.existsSync(path.join(ws.rootPath, 'destino', 'src', 'a.txt'))).toBe(true);
+    expect(fs.existsSync(path.join(ws.rootPath, 'dest'))).toBe(false);
+
+    // "Ver no Explorer" fecha o menu sem erro.
+    await entry('destino').click({ button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Ver no Explorer' }).click();
+    await expect(menu).toHaveCount(0);
+    await expect(section.getByRole('alert')).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
 test.describe('com o Claude Code real', () => {
   test.skip(process.env.NEXUS_LIVE_TESTS !== '1', 'gasta cota do plano; rode com NEXUS_LIVE_TESTS=1');
   test.describe.configure({ timeout: 180_000 });

@@ -262,6 +262,21 @@ export const ipcContract = {
   },
   /** Move um arquivo ou pasta do escopo para a Lixeira do sistema. */
   'code:delete': { input: codeScopeSchema.extend({ path: z.string().min(1).max(1000) }), output: z.null() },
+  /** Cola dentro de uma pasta do escopo itens copiados na própria árvore. Não sobrescreve nada. */
+  'code:copy': {
+    input: codeScopeSchema.extend({
+      dir: z.string().max(1000),
+      paths: z.array(z.string().min(1).max(1000)).min(1).max(200),
+    }),
+    output: z.object({ imported: z.array(z.string()) }),
+  },
+  /** Renomeia um arquivo ou pasta do escopo (continua na mesma pasta). */
+  'code:rename': {
+    input: codeScopeSchema.extend({ path: z.string().min(1).max(1000), name: z.string().min(1).max(255) }),
+    output: z.object({ path: z.string() }),
+  },
+  /** Mostra um item (ou a raiz, com path vazio) no Explorer do Windows. */
+  'code:reveal': { input: codeScopeSchema.extend({ path: z.string().max(1000) }), output: z.null() },
   'knowledge:tree': { input: z.object({ workspaceId: z.uuid() }), output: noteTreeNodeSchema },
   'knowledge:graph': { input: z.object({ workspaceId: z.uuid() }), output: galaxyGraphSchema },
   /** Aparência que o usuário escolheu para os planetas do Workspace (só o que ele trocou). */

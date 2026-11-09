@@ -51,6 +51,26 @@ export function useImportPaths(scope: CodeScope) {
   });
 }
 
+export function useCopyEntries(scope: CodeScope) {
+  const refresh = useRefreshTree(scope);
+  return useMutation({
+    mutationFn: (input: { dir: string; paths: string[] }) => invoke('code:copy', { ...scope, ...input }),
+    onSettled: refresh,
+  });
+}
+
+export function useRenameEntry(scope: CodeScope) {
+  const refresh = useRefreshTree(scope);
+  return useMutation({
+    mutationFn: (input: { path: string; name: string }) => invoke('code:rename', { ...scope, ...input }),
+    onSettled: refresh,
+  });
+}
+
+export function useRevealEntry(scope: CodeScope) {
+  return useMutation({ mutationFn: (path: string) => invoke('code:reveal', { ...scope, path }) });
+}
+
 export function useDeleteEntry(scope: CodeScope) {
   const refresh = useRefreshTree(scope);
   return useMutation({

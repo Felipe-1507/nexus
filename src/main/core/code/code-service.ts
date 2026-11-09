@@ -38,6 +38,8 @@ export class CodeService {
       platform?: NodeJS.Platform;
       /** Manda o item para a Lixeira do sistema (nada é apagado de vez). */
       trash?: (target: string) => Promise<void>;
+      /** Mostra um item no Explorer do sistema. */
+      reveal?: (target: string) => void;
       /** Pastas do próprio app (banco, preferências) que nunca podem ser copiadas para dentro de um projeto. */
       protectedDirs?: string[];
     },
@@ -102,7 +104,13 @@ export class CodeService {
    * Cola arquivos e pastas copiados do Explorer (ou arrastados) dentro de uma pasta do escopo. Nunca sobrescreve: se
    * o nome já existe, a cópia ganha " - cópia". Links simbólicos não são copiados. Devolve os caminhos criados.
    */
-  async importPaths(scope: CodeScope, dir: string, sources: string[]): Promise<{ imported: string[] }> {
+  async importPaths(
+    scope: CodeScope,
+    dir: string,
+    sources: string[],
+    /** Origem já dentro do escopo (copiada na árvore): não precisa da proteção das pastas do app. */
+    trusted = false,
+  ): Promise<{ imported: string[] }> {
     const root = await this.root(scope);
     const destDir = this.resolve(root, dir);
     if (!(await fs.stat(destDir).catch(() => null))?.isDirectory()) {
@@ -119,7 +127,7 @@ export class CodeService {
       if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) {
         throw new NexusError('VALIDATION', `"${path.basename(source)}" não pode ser copiado (link ou item especial).`);
       }
-      if ((this.deps.protectedDirs ?? []).some((p) => isInside(p, source, p, platform))) {
+      if (!trusted && (this.deps.protectedDirs ?? []).some((p) => isInside(p, source, p, platform))) {
         throw new NexusError('VALIDATION', 'Esta pasta pertence ao próprio app e não pode ser copiada.');
       }
       if (stat.isDirectory() && isInside(source, destDir, source, platform)) {
@@ -136,6 +144,46 @@ export class CodeService {
       imported.push([dir.replace(/\\/g, '/'), name].filter(Boolean).join('/'));
     }
     return { imported };
+  }
+
+  /** Cola dentro de `dir` itens que já estão no escopo (copiados na própria árvore). Mesmas regras de `importPaths`. */
+  async copyEntries(scope: CodeScope, dir: string, files: string[]): Promise<{ imported: string[] }> {
+    const root = await this.root(scope);
+    return this.importPaths(
+      scope,
+      dir,
+      files.map((f) => this.resolve(root, f)),
+      true,
+    );
+  }
+
+  /** Troca o nome de um arquivo ou pasta do escopo (ele continua na mesma pasta). Devolve o novo caminho. */
+  async rename(scope: CodeScope, file: string, newName: string): Promise<{ path: string }> {
+    const name = newName.trim();
+    if (!name || name === '.' || name === '..' || /[<>:"/\\|?*\0]/.test(name) || /[. ]$/.test(name)) {
+      throw new NexusError('VALIDATION', 'Nome inválido. Não use / \\ : * ? " < > | nem termine com ponto.');
+    }
+    const root = await this.root(scope);
+    const source = this.resolve(root, file);
+    if (path.resolve(source) === path.resolve(root))
+      throw new NexusError('VALIDATION', 'A pasta raiz não pode ser renomeada.');
+    if (!(await fs.lstat(source).catch(() => null))) throw new NexusError('NOT_FOUND', 'Arquivo não encontrado.');
+    const target = path.join(path.dirname(source), name);
+    if (path.basename(source) !== name && (await fs.lstat(target).catch(() => null))) {
+      throw new NexusError('CONFLICT', `Já existe "${name}" nesta pasta.`);
+    }
+    if (path.basename(source) !== name) await fs.rename(source, target);
+    const parent = file.replace(/\\/g, '/').split('/').slice(0, -1);
+    return { path: [...parent, name].join('/') };
+  }
+
+  /** Mostra o item no Explorer do Windows (a raiz do escopo, quando `file` é vazio). */
+  async reveal(scope: CodeScope, file: string): Promise<void> {
+    if (!this.deps.reveal) throw new NexusError('VALIDATION', 'Abrir no Explorer não está disponível aqui.');
+    const root = await this.root(scope);
+    const target = file ? this.resolve(root, file) : root;
+    if (!(await fs.lstat(target).catch(() => null))) throw new NexusError('NOT_FOUND', 'Arquivo não encontrado.');
+    this.deps.reveal(target);
   }
 
   /** Move um arquivo ou pasta do escopo para a Lixeira. A raiz do escopo nunca pode ser removida. */

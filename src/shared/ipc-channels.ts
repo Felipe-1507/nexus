@@ -86,6 +86,9 @@ export const IPC_CHANNELS = [
   'code:openLink',
   'code:import',
   'code:delete',
+  'code:copy',
+  'code:rename',
+  'code:reveal',
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];

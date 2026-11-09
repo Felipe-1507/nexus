@@ -123,6 +123,27 @@ describe('CodeService', () => {
       await expect(editable.importPaths(scope, 'src', [repo])).rejects.toThrow('dentro dela mesma');
     });
 
+    it('copia dentro da árvore, renomeia e mostra no Explorer', async () => {
+      const { scope, repo } = await setup();
+      const shown: string[] = [];
+      const svc = new CodeService({ workspaces, projects, reveal: (t) => shown.push(t) });
+      expect((await svc.copyEntries(scope, 'src', ['src/app.ts'])).imported).toEqual(['src/app - cópia.ts']);
+      expect(fs.existsSync(path.join(repo, 'src', 'app - cópia.ts'))).toBe(true);
+
+      expect(await svc.rename(scope, 'src/app.ts', 'main.ts')).toEqual({ path: 'src/main.ts' });
+      expect(fs.existsSync(path.join(repo, 'src', 'main.ts'))).toBe(true);
+      await expect(svc.rename(scope, 'src/main.ts', 'app - cópia.ts')).rejects.toMatchObject({ code: 'CONFLICT' });
+      await expect(svc.rename(scope, 'src/main.ts', 'a/b')).rejects.toMatchObject({ code: 'VALIDATION' });
+      await expect(svc.rename(scope, 'src/main.ts', '..')).rejects.toMatchObject({ code: 'VALIDATION' });
+      await expect(svc.rename(scope, '.', 'x')).rejects.toThrow('raiz');
+      await expect(svc.rename(scope, 'nada.txt', 'x')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+      await svc.reveal(scope, 'src');
+      await svc.reveal(scope, '');
+      expect(shown).toEqual([path.join(repo, 'src'), repo]);
+      await expect(code.reveal(scope, 'src')).rejects.toMatchObject({ code: 'VALIDATION' });
+    });
+
     it('manda para a Lixeira, recusa a raiz e caminhos fora da pasta', async () => {
       const { scope, repo } = await setup();
       await editable.remove(scope, 'src/app.ts');
