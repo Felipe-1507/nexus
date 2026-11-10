@@ -39,3 +39,11 @@ export const claudeStatusSchema = z.object({
 export type ClaudeCli = z.infer<typeof claudeCliSchema>;
 export type ClaudeAuth = z.infer<typeof claudeAuthSchema>;
 export type ClaudeStatus = z.infer<typeof claudeStatusSchema>;
+
+/** Versão do Claude Code instalada x a mais nova publicada. `available`: há uma versão mais nova para instalar. */
+export const claudeUpdateSchema = z.object({
+  current: z.string().nullable(),
+  latest: z.string().nullable(),
+  available: z.boolean(),
+});
+export type ClaudeUpdate = z.infer<typeof claudeUpdateSchema>;

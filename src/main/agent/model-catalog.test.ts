@@ -97,3 +97,19 @@ describe('ModelCatalogService', () => {
     expect((await service.get('C:\\claude.exe')).models).toHaveLength(3);
   });
 });
+
+describe('aviso de modelo novo', () => {
+  const catalog = toCatalog(MODELS as unknown as ModelInfo[]);
+  it('no primeiro uso nada é novidade; depois, só o que não estava na lista vista', async () => {
+    const { newModels, modelValues } = await import('./model-catalog');
+    expect(newModels(catalog, null)).toEqual([]);
+    const values = modelValues(catalog);
+    expect(newModels(catalog, values)).toEqual([]);
+    expect(
+      newModels(
+        catalog,
+        values.filter((v) => v !== 'haiku'),
+      ).map((m) => m.value),
+    ).toEqual(['haiku']);
+  });
+});

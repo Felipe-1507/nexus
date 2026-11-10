@@ -22,6 +22,7 @@ describe('preferências', () => {
         theme: 'system',
         privacyAcceptedAt: null,
         darkVariant: 'padrao',
+        seenModels: null,
         accent: null,
       },
     });
@@ -34,6 +35,7 @@ describe('preferências', () => {
       theme: 'dark' as const,
       privacyAcceptedAt: null,
       darkVariant: 'grafite' as const,
+      seenModels: ['opus', 'sonnet'],
       accent: '#4f8cff',
     };
     savePreferences(file, prefs);

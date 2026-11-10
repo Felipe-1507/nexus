@@ -88,3 +88,15 @@ export class ModelCatalogService {
     }
   }
 }
+
+/** Modelos do catálogo que o usuário ainda não viu. Sem lista anterior (primeiro uso), nada é novidade. */
+export function newModels(catalog: ModelCatalog, seen: string[] | null): ModelOption[] {
+  if (seen === null) return [];
+  const known = new Set(seen);
+  return catalog.models.filter((m) => !known.has(m.value));
+}
+
+/** Valores de todos os modelos do catálogo (o que fica gravado como "já visto"). */
+export function modelValues(catalog: ModelCatalog): string[] {
+  return catalog.models.map((m) => m.value);
+}

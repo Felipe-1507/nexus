@@ -4,6 +4,7 @@ import { ChatView } from '@renderer/features/chat/ChatView';
 import { useChatEvents } from '@renderer/features/chat/queries';
 import { SessionsOverview } from '@renderer/features/context/SessionsOverview';
 import { useClaudeAutoCheck } from '@renderer/features/claude/queries';
+import { UpdateNotices } from '@renderer/features/claude/UpdateNotices';
 import { GalaxyScreen, usePrefetchGalaxy } from '@renderer/features/galaxy/GalaxyScreen';
 import { useKnowledgeEvents } from '@renderer/features/knowledge/queries';
 import { PrivacyNoticeHost } from '@renderer/features/privacy/PrivacyNotice';
@@ -68,6 +69,7 @@ export function Shell() {
         )}
 
         <main className="flex min-w-0 flex-1 flex-col bg-bg">
+          <UpdateNotices />
           <ErrorBoundary key={layout.view} fallback={(error, reset) => <PanelError error={error} reset={reset} />}>
             {layout.view === 'settings' && <SettingsView />}
             {layout.view === 'workspace' && <WorkspaceView />}

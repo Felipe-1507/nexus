@@ -58,3 +58,8 @@ export function createConsoleOpener(env: NodeJS.ProcessEnv, spawnFn: typeof spaw
       );
     });
 }
+
+/** Atualização do próprio Claude Code (`claude update`) numa janela de console, como o login. */
+export function updateCommand(cliPath: string): ConsoleCommand {
+  return { file: cliPath, args: ['update'] };
+}

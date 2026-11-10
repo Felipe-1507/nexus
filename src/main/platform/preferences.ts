@@ -11,6 +11,8 @@ export const preferencesSchema = z.object({
   privacyAcceptedAt: z.string().nullable().default(null),
   /** Variação do tema escuro escolhida em Configurações → Aparência. */
   darkVariant: z.enum(DARK_VARIANT_IDS).default('padrao'),
+  /** Modelos que o usuário já viu (`null`: primeiro uso, ainda não registrado). Serve para avisar de modelo novo. */
+  seenModels: z.array(z.string().max(100)).max(500).nullable().default(null),
   /** Cor de destaque escolhida (`null` = a da marca). */
   accent: z
     .string()

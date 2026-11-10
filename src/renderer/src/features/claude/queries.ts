@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { invoke } from '@renderer/lib/ipc';
 
@@ -75,4 +75,70 @@ export function useClaudeAutoCheck() {
       if (timer) clearInterval(timer);
     };
   }, [ready, until, queryClient]);
+}
+
+const updateKey = ['claude', 'update'] as const;
+const newsKey = ['models', 'news'] as const;
+
+/** Versão do Claude Code instalada x a mais nova. O main consulta a internet no máximo a cada 6 horas. */
+export function useClaudeUpdate() {
+  const ready = useClaudeStatus().data?.ready;
+  return useQuery({
+    queryKey: updateKey,
+    queryFn: () => invoke('claude:updateCheck', { refresh: false }),
+    enabled: ready !== undefined,
+    staleTime: Infinity,
+  });
+}
+
+/** Modelos que apareceram desde a última vez que o usuário viu a lista. */
+export function useNewModels() {
+  const ready = useClaudeStatus().data?.ready;
+  return useQuery({
+    queryKey: newsKey,
+    queryFn: () => invoke('models:news'),
+    enabled: ready === true,
+    staleTime: Infinity,
+  });
+}
+
+export function useMarkModelsSeen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => invoke('models:markSeen'),
+    onSuccess: () => queryClient.setQueryData(newsKey, []),
+  });
+}
+
+/**
+ * Abre `claude update` num console. Quando o usuário volta para o Nexus, a versão é conferida de novo (sem esperar
+ * as 6 horas); se mudou, a lista de modelos é lida outra vez e o aviso de modelo novo aparece se houver.
+ */
+export function useClaudeUpdater() {
+  const queryClient = useQueryClient();
+  const [updating, setUpdating] = useState(false);
+  const start = useMutation({ mutationFn: () => invoke('claude:update'), onSuccess: () => setUpdating(true) });
+
+  useEffect(() => {
+    if (!updating) return;
+    const check = async () => {
+      try {
+        const status = await invoke('claude:status', { refresh: true });
+        queryClient.setQueryData(key, status);
+        const next = await invoke('claude:updateCheck', { refresh: true });
+        queryClient.setQueryData(updateKey, next);
+        if (!next.available) {
+          setUpdating(false);
+          await invoke('models:list', { refresh: true });
+          await queryClient.invalidateQueries({ queryKey: ['models'] });
+        }
+      } catch {
+        // Tenta de novo no próximo foco.
+      }
+    };
+    window.addEventListener('focus', check);
+    return () => window.removeEventListener('focus', check);
+  }, [updating, queryClient]);
+
+  return { start, updating, cancel: () => setUpdating(false) };
 }

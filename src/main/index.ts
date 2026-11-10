@@ -1,5 +1,11 @@
 import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, session, shell } from 'electron';
-import { deleteSession, forkSession, getSessionMessages, listSessions, renameSession } from '@anthropic-ai/claude-agent-sdk';
+import {
+  deleteSession,
+  forkSession,
+  getSessionMessages,
+  listSessions,
+  renameSession,
+} from '@anthropic-ai/claude-agent-sdk';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,10 +16,17 @@ import { paletteCss, withAppearance } from '@shared/palette';
 import { CHAT_EVENT_CHANNEL } from '@shared/chat';
 import { KNOWLEDGE_EVENT_CHANNEL } from '@shared/knowledge';
 import { NexusError } from '@shared/ipc-result';
-import { createConsoleOpener, installCommand, loginCommand, type OpenConsole } from './agent/claude-setup';
+import {
+  createConsoleOpener,
+  installCommand,
+  loginCommand,
+  updateCommand,
+  type OpenConsole,
+} from './agent/claude-setup';
+import { ClaudeUpdateService } from './agent/update-check';
 import { ClaudeStatusService } from './agent/claude-status';
 import { detectClaude } from './agent/cli-detector';
-import { ModelCatalogService } from './agent/model-catalog';
+import { ModelCatalogService, modelValues, newModels } from './agent/model-catalog';
 import { PermissionBroker } from './agent/permission-broker';
 import { UsageService, type CreateUsageQuery } from './agent/usage-service';
 import { SessionManager } from './agent/session-manager';
@@ -175,6 +188,7 @@ function bootstrap(): void {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(CHAT_EVENT_CHANNEL, event);
   });
   broker = new PermissionBroker({ emit: batcher.push });
+  const claudeUpdates = new ClaudeUpdateService({ fetch: (url, init) => fetch(url, init) });
   const models = new ModelCatalogService({ createQuery: (args) => query(args), env: process.env, cwd: paths.userData });
   const permissions = new PermissionsService(db.db, broker);
   const usage = new UsageService({
@@ -274,6 +288,36 @@ function bootstrap(): void {
         ...workspaceHandlers(workspaces, shellOpen),
         'claude:status': ({ refresh }) => claude.get(refresh),
         'claude:install': () => openSetupConsole('o instalador do Claude Code', installCommand()),
+        'claude:updateCheck': async ({ refresh }) => {
+          const status = await claude.get();
+          return claudeUpdates.check(status.cli.state === 'found' ? status.cli.version : null, refresh);
+        },
+        'claude:update': async () => {
+          const status = await claude.get();
+          if (status.cli.state !== 'found') {
+            throw new NexusError('VALIDATION', 'Instale o Claude Code antes de atualizar.');
+          }
+          return openSetupConsole('a atualização do Claude Code', updateCommand(status.cli.path));
+        },
+        'models:news': async () => {
+          const status = await claude.get();
+          if (status.cli.state !== 'found' || !status.ready) return [];
+          const catalog = await models.get(status.cli.path, false);
+          const seen = prefs.get().seenModels;
+          // Primeiro uso: tudo o que existe agora conta como já visto, para o aviso não nascer cheio.
+          if (seen === null) {
+            prefs.update({ seenModels: modelValues(catalog) });
+            return [];
+          }
+          return newModels(catalog, seen);
+        },
+        'models:markSeen': async () => {
+          const status = await claude.get();
+          if (status.cli.state === 'found' && status.ready) {
+            prefs.update({ seenModels: modelValues(await models.get(status.cli.path, false)) });
+          }
+          return null;
+        },
         'claude:login': async () => {
           const status = await claude.get();
           if (status.cli.state !== 'found') {

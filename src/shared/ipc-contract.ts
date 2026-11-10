@@ -10,7 +10,7 @@ import {
   sendMessageResultSchema,
   sendMessageSchema,
 } from './chat';
-import { claudeStatusSchema } from './claude';
+import { claudeStatusSchema, claudeUpdateSchema } from './claude';
 import {
   continuationPreviewSchema,
   contextOverviewSchema,
@@ -30,7 +30,7 @@ import {
 } from './knowledge';
 import { planetOverrideSchema } from './planets';
 import { usageSchema } from './usage';
-import { modelCatalogSchema, modelChoiceSchema } from './models';
+import { modelCatalogSchema, modelChoiceSchema, modelOptionSchema } from './models';
 import { DARK_VARIANT_IDS } from './palette';
 import { claudeSessionSummarySchema, createProjectSchema, folderInspectionSchema, projectSchema } from './project';
 import type { IpcChannel } from './ipc-channels';
@@ -139,6 +139,14 @@ export const ipcContract = {
   'usage:get': { input: z.object({ refresh: z.boolean() }), output: usageSchema },
   /** Abre o instalador oficial do Claude Code numa janela do PowerShell. */
   'claude:install': { input: z.undefined(), output: z.null() },
+  /** Compara a versão instalada do Claude Code com a mais nova (internet, no máximo a cada 6 horas; `refresh` força). */
+  'claude:updateCheck': { input: z.object({ refresh: z.boolean() }), output: claudeUpdateSchema },
+  /** Abre `claude update` num console para instalar a versão mais nova. */
+  'claude:update': { input: z.undefined(), output: z.null() },
+  /** Modelos que apareceram depois da última vez que o usuário viu a lista. */
+  'models:news': { input: z.undefined(), output: z.array(modelOptionSchema) },
+  /** Marca todos os modelos atuais como vistos (some o aviso). */
+  'models:markSeen': { input: z.undefined(), output: z.null() },
   /** Abre o login do próprio Claude Code (`claude auth login`) num console. */
   'claude:login': { input: z.undefined(), output: z.null() },
   'conversations:list': {
