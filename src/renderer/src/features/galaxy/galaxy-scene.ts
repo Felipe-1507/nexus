@@ -193,6 +193,7 @@ export class GalaxyScene {
 
   /** `styles`: a aparência de cada planeta, na mesma ordem de `graph.notes`. */
   setData(graph: GalaxyGraph, layout: GalaxyLayout, styles: PlanetStyle[]): void {
+    this.wake();
     const selectedPath = this.selected === null ? null : this.graph.notes[this.selected]?.path;
     this.graph = graph;
     this.layout = layout;
@@ -216,6 +217,7 @@ export class GalaxyScene {
 
   /** Seleciona o planeta e leva a câmera até ele. */
   focus(index: number): void {
+    this.wake();
     const p = this.layout.notes[index];
     if (!p) return;
     this.select(index);
@@ -241,6 +243,7 @@ export class GalaxyScene {
   }
 
   select(index: number | null): void {
+    this.wake();
     this.selected = index;
     this.container.dataset.selected = index === null ? '' : (this.graph.notes[index]?.path ?? '');
     this.updateHighlight();
@@ -572,12 +575,24 @@ export class GalaxyScene {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.wake();
     this.haloMaterial.uniforms.scale!.value = h * this.renderer.getPixelRatio() * 0.6;
   }
+
+  /** Marca a cena como alterada: o próximo quadro é desenhado (mesmo sem a câmera ter se mexido). */
+  private wake(): void {
+    this.dirty = true;
+  }
+
+  private dirty = true;
+  /** Última posição do ponteiro já examinada (o raycast só roda quando ela muda ou a câmera se mexe). */
+  private lastPick = '';
 
   private loop = () => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.loop);
+    // Aba escondida, janela minimizada ou painel fechado: nada a desenhar.
+    if (document.hidden || this.container.clientWidth === 0 || this.container.clientHeight === 0) return;
 
     if (this.fly) {
       const t = Math.min(1, (performance.now() - this.fly.t0) / FLY_MS);
@@ -589,7 +604,13 @@ export class GalaxyScene {
         this.container.dataset.flying = 'false';
       }
     }
-    this.controls.update();
+    const moved = this.controls.update();
+
+    // Parada (câmera quieta, ponteiro no mesmo lugar, nada mudou): não redesenha nem refaz o raycast.
+    const pointerKey = this.pointer && !this.down ? `${this.pointer.x},${this.pointer.y}` : '';
+    if (!moved && !this.dirty && !this.fly && pointerKey === this.lastPick) return;
+    this.lastPick = pointerKey;
+    this.dirty = false;
 
     const hovered = this.pointer && !this.down ? this.pick(this.pointer.x, this.pointer.y) : null;
     if (hovered !== this.hovered) {
