@@ -25,6 +25,7 @@ export const IPC_CHANNELS = [
   'conversations:list',
   'conversations:messages',
   'conversations:archive',
+  'conversations:rename',
   'conversations:sync',
   'chat:send',
   'chat:interrupt',

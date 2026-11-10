@@ -764,6 +764,31 @@ describe('ChatService', () => {
     chat.archive(first.conversation.id);
     expect(chat.listConversations(ws.id).map((c) => c.id)).toEqual([second.conversation.id]);
   });
+
+  it('renomeia a conversa, grava o nome na sessão do Claude Code e mantém a ordem da lista', async () => {
+    const ws = workspaces.create({ name: 'A', ...base });
+    let clock = 0;
+    const rename = vi.fn(async () => {});
+    chat = makeChat({
+      forker: { fork: vi.fn(), remove: vi.fn(), rename },
+      now: () => new Date(Date.UTC(2026, 0, 1, 0, 0, clock++)).toISOString(),
+    });
+    const first = await chat.send({ workspaceId: ws.id, text: 'primeira' });
+    sessions.turns[0]!.h.onSessionId('sess-r1');
+    sessions.turns[0]!.h.onDone(outcome('ok'));
+    const second = await chat.send({ workspaceId: ws.id, text: 'segunda' });
+    sessions.turns[1]!.h.onDone(outcome('ok'));
+
+    const renamed = await chat.rename(first.conversation.id, '  Plano   do site  ');
+    expect(renamed.title).toBe('Plano do site');
+    expect(rename).toHaveBeenCalledWith(expect.any(String), expect.any(String), 'Plano do site');
+    expect(chat.listConversations(ws.id).map((c) => c.id)).toEqual([second.conversation.id, first.conversation.id]);
+    await expect(chat.rename(first.conversation.id, '   ')).rejects.toMatchObject({ code: 'VALIDATION' });
+
+    // Se o Claude Code recusar o novo nome, o nome do Nexus vale do mesmo jeito.
+    rename.mockRejectedValueOnce(new Error('sem acesso'));
+    expect((await chat.rename(second.conversation.id, 'Outro')).title).toBe('Outro');
+  });
 });
 
 describe('sincronizar com o Claude Code', () => {

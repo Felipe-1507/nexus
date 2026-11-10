@@ -99,6 +99,29 @@ test.describe('com o Claude Code real', () => {
     await expect(lastAnswer(page)).toContainText('4721');
   });
 
+  test('renomear a conversa (duplo clique, Enter) e o nome continua após reiniciar', async () => {
+    const list = page.getByRole('list', { name: 'Lista de conversas' });
+    await list.getByRole('button').first().dblclick();
+    const input = list.getByRole('textbox', { name: /Novo nome da conversa/ });
+    await input.fill('Código secreto da nota');
+    await input.press('Enter');
+    await expect(list.getByRole('button', { name: 'Código secreto da nota', exact: true })).toBeVisible();
+
+    // Esc cancela sem trocar o nome.
+    await list.getByRole('button').first().dblclick();
+    await list.getByRole('textbox', { name: /Novo nome da conversa/ }).fill('Descartado');
+    await page.keyboard.press('Escape');
+    await expect(list.getByRole('button', { name: 'Código secreto da nota', exact: true })).toBeVisible();
+
+    await app.close();
+    ({ app, page } = await launchApp(userData, options));
+    await expect(
+      page
+        .getByRole('list', { name: 'Lista de conversas' })
+        .getByRole('button', { name: 'Código secreto da nota', exact: true }),
+    ).toBeVisible();
+  });
+
   test('somente leitura: não cria arquivos', async () => {
     // O padrão é Auto; o modo muda no meio da conversa (o processo reinicia e a conversa continua).
     await page.evaluate(async () => {

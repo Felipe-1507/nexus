@@ -111,6 +111,10 @@ export class ConversationsRepo {
     this.db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(at, id);
   }
 
+  rename(id: string, title: string): void {
+    this.db.prepare('UPDATE conversations SET title = ? WHERE id = ?').run(title, id);
+  }
+
   archive(id: string, at: string): void {
     this.db.prepare('UPDATE conversations SET archived_at = ? WHERE id = ?').run(at, id);
   }

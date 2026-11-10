@@ -147,6 +147,11 @@ export const ipcContract = {
     output: z.array(conversationSchema),
   },
   'conversations:messages': { input: z.object({ conversationId: z.uuid() }), output: z.array(chatMessageSchema) },
+  /** Troca o nome da conversa (no Nexus e na sessão do Claude Code). */
+  'conversations:rename': {
+    input: z.object({ conversationId: z.uuid(), title: z.string().max(200) }),
+    output: conversationSchema,
+  },
   'conversations:archive': { input: z.object({ conversationId: z.uuid() }), output: z.null() },
   /** Traz para a tela as mensagens que a sessão do Claude Code ganhou fora do Nexus. Não altera a sessão. */
   'conversations:sync': {

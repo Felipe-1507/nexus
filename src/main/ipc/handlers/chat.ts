@@ -8,6 +8,7 @@ type ChatHandlers = Pick<
   | 'conversations:list'
   | 'conversations:messages'
   | 'conversations:archive'
+  | 'conversations:rename'
   | 'conversations:sync'
   | 'conversations:setModel'
   | 'chat:send'
@@ -32,6 +33,7 @@ export function chatHandlers(
       chat.archive(conversationId);
       return null;
     },
+    'conversations:rename': ({ conversationId, title }) => chat.rename(conversationId, title),
     'conversations:sync': ({ conversationId }) => chat.syncFromClaudeCode(conversationId),
     'conversations:setModel': ({ conversationId, model, effort }) => chat.setModel(conversationId, { model, effort }),
     'chat:send': (input) => chat.send(input),

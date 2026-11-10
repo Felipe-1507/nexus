@@ -94,6 +94,14 @@ export function useInterrupt() {
   return useMutation({ mutationFn: (conversationId: string) => invoke('chat:interrupt', { conversationId }) });
 }
 
+export function useRenameConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { conversationId: string; title: string }) => invoke('conversations:rename', input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+  });
+}
+
 export function useArchiveConversation() {
   const queryClient = useQueryClient();
   return useMutation({

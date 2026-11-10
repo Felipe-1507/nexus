@@ -45,6 +45,8 @@ export interface TranscriptSource {
 export interface SessionForker {
   fork: (sessionId: string, dir: string, title: string) => Promise<string>;
   remove: (sessionId: string, dir: string) => Promise<void>;
+  /** Troca o título da sessão no Claude Code (é o nome que o VS Code mostra). */
+  rename?: (sessionId: string, dir: string, title: string) => Promise<void>;
 }
 
 export interface ChatServiceDeps {
@@ -174,6 +176,21 @@ export class ChatService {
     }
     this.queues.delete(conversationId);
     this.repo.archive(conversationId, this.now());
+  }
+
+  /**
+   * Troca o nome da conversa. O nome também é gravado na sessão do Claude Code (como o "Rename" do VS Code); se essa
+   * gravação falhar, o nome do Nexus vale mesmo assim. Não mexe na ordem da lista.
+   */
+  async rename(conversationId: string, title: string): Promise<Conversation> {
+    const row = this.requireConversation(conversationId);
+    const clean = title.replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!clean) throw new NexusError('VALIDATION', 'Dê um nome à conversa.');
+    this.repo.rename(conversationId, clean);
+    if (row.claudeSessionId && this.deps.forker?.rename) {
+      await this.deps.forker.rename(row.claudeSessionId, row.cwd, clean).catch(() => undefined);
+    }
+    return this.toConversation(this.requireConversation(conversationId));
   }
 
   /** Mensagens esperando a vez, por conversa. Ficam só na memória: uma fila antiga não deve reaparecer depois de um reinício. */

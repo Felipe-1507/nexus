@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, session, shell } from 'electron';
-import { deleteSession, forkSession, getSessionMessages, listSessions } from '@anthropic-ai/claude-agent-sdk';
+import { deleteSession, forkSession, getSessionMessages, listSessions, renameSession } from '@anthropic-ai/claude-agent-sdk';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -212,6 +212,7 @@ function bootstrap(): void {
     forker: {
       fork: async (sessionId, dir, title) => (await forkSession(sessionId, { dir, title })).sessionId,
       remove: (sessionId, dir) => deleteSession(sessionId, { dir }),
+      rename: (sessionId, dir, title) => renameSession(sessionId, title, { dir }),
     },
     attachments,
     workspaces,
