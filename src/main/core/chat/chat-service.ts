@@ -270,7 +270,12 @@ export class ChatService {
             assistantMessageId: started.assistantMessageId,
           });
         } catch (err) {
+          // A mensagem não se perde: volta ao início da fila e o envio para até o usuário resolver (ou remover).
+          const queue = this.queues.get(conversationId) ?? [];
+          queue.unshift(next);
+          this.queues.set(conversationId, queue);
           this.emitQueue(conversationId, err instanceof Error ? err.message : String(err));
+          break;
         }
       }
     } finally {

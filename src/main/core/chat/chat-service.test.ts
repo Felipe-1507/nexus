@@ -345,7 +345,7 @@ describe('fila de mensagens enquanto o Claude responde', () => {
     await vi.waitFor(() => expect(sessions.turns).toHaveLength(2));
   });
 
-  it('se a mensagem da fila não puder ser enviada, o erro aparece e a fila segue', async () => {
+  it('se a mensagem da fila não puder ser enviada, o erro aparece e ela continua na fila, sem se perder', async () => {
     const { ws, conversationId } = await conversationWithRunningTurn();
     chat.enqueue({ workspaceId: ws.id, conversationId, text: 'vai falhar' });
     chat.enqueue({ workspaceId: ws.id, conversationId, text: 'vai funcionar' });
@@ -353,6 +353,8 @@ describe('fila de mensagens enquanto o Claude responde', () => {
     sessions.turns[0]!.h.onDone(outcome('ok'));
     await flush();
     expect(events.some((e) => e.type === 'queue' && e.error)).toBe(true);
+    const last = [...events].reverse().find((e) => e.type === 'queue');
+    expect(last && 'items' in last ? last.items.map((i) => i.text) : []).toEqual(['vai falhar', 'vai funcionar']);
     claude = READY;
   });
 

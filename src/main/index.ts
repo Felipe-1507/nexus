@@ -52,7 +52,7 @@ import { permissionHandlers } from './ipc/handlers/permissions';
 import { projectHandlers } from './ipc/handlers/projects';
 import { workspaceHandlers } from './ipc/handlers/workspaces';
 import { registerIpc } from './ipc/register';
-import { openDatabase, type Database } from './persistence/db';
+import { backupDatabase, openDatabase, type Database } from './persistence/db';
 import { configureLogger, log } from './platform/logger';
 import { resolveAppPaths } from './platform/paths';
 import { loadPreferences } from './platform/preferences';
@@ -109,6 +109,8 @@ function bootstrap(): void {
   if (warning) log.warn(`preferences.json ignorado: ${warning}`);
 
   database = openDatabase(paths.database);
+  const backup = backupDatabase(database.db, path.join(paths.userData, 'backups'));
+  if (backup) log.info('Cópia de segurança do banco', { arquivo: path.basename(backup) });
   log.info('Banco pronto', { versao: database.migration.current, aplicadas: database.migration.applied });
 
   applyTheme(preferences.theme);

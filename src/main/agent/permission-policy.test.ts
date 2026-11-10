@@ -119,7 +119,9 @@ describe('outras ferramentas', () => {
 describe('suggestRule', () => {
   it('propõe prefixo de dois termos para comandos simples', () => {
     expect(suggestRule('Bash', { command: 'npm test -- --watch' })).toMatchObject({ pattern: 'npm test' });
-    expect(suggestRule('Bash', { command: 'git -C x status' })).toMatchObject({ pattern: 'git' });
+    // Opção logo após o programa: sem "sempre permitir" (a regra liberaria qualquer `git` ou `node`).
+    expect(suggestRule('Bash', { command: 'git -C x status' })).toBeNull();
+    expect(suggestRule('Bash', { command: 'node -e "x"' })).toBeNull();
     expect(suggestRule('Bash', { command: 'git status && git push' })).toBeNull();
   });
 

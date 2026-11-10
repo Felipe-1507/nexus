@@ -84,7 +84,9 @@ export function suggestRule(tool: string, input: Record<string, unknown>): (Rule
     const command = normalizeCommand(input.command);
     if (!command) return null;
     const tokens = command.split(' ');
-    const pattern = tokens.length > 1 && !tokens[1]!.startsWith('-') ? `${tokens[0]} ${tokens[1]}` : tokens[0]!;
+    // Com uma opção logo depois do programa (`node -e`, `git -C`), uma regra por prefixo liberaria qualquer uso dele.
+    if (tokens.length > 1 && tokens[1]!.startsWith('-')) return null;
+    const pattern = tokens.length > 1 ? `${tokens[0]} ${tokens[1]}` : tokens[0]!;
     return { tool, pattern, label: `Sempre permitir "${pattern}" neste Workspace` };
   }
   return { tool, pattern: '', label: 'Sempre permitir neste Workspace' };
