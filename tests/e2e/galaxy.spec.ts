@@ -231,7 +231,7 @@ test('planetas: o tamanho acompanha o conteúdo e a aparência pode ser editada 
     await search.press('Enter');
     await expect(card.getByTestId('planet-detail')).toHaveText('Planeta principal do projeto');
     await card.getByRole('button', { name: 'Editar planeta' }).click();
-    await card.getByRole('button', { name: 'Voltar ao aleatório' }).click();
+    await card.getByRole('button', { name: 'Voltar ao automático' }).click();
     await expect(card.getByTestId('planet-detail')).toHaveCount(0);
     await expect.poll(() => JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({});
 
@@ -415,4 +415,42 @@ test.describe('com o Claude Code real', () => {
       removeUserData(userData);
     }
   });
+});
+
+test('aparência automática: nota com código vira planeta metálico; a escolha manual vale até voltar ao automático', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Automático');
+    const fence = '```';
+    write(
+      ws.knowledgeDir,
+      'Dev/Script.md',
+      `# Script\n${fence}ts\nconst a = 1;\n${fence}\n${fence}\nb\n${fence}\nTexto. ${'x '.repeat(400)}\n`,
+    );
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '1');
+    const search = page.getByRole('combobox', { name: 'Buscar nota na galáxia' });
+    await search.fill('script');
+    await search.press('Enter');
+    const card = page.getByRole('region', { name: 'Planeta selecionado' });
+    await card.getByRole('button', { name: 'Editar planeta' }).click();
+    const kind = card.getByLabel('Tipo do planeta');
+    await expect(kind).toHaveValue('metalico');
+    await expect(card.getByTestId('planet-auto')).toBeVisible();
+
+    // Escolha manual: vale mesmo que a nota continue com código.
+    await kind.selectOption('gelo');
+    await expect(card.getByRole('button', { name: 'Voltar ao automático' })).toBeVisible();
+    write(ws.knowledgeDir, 'Dev/Script.md', `# Script\n${fence}\nc\n${fence}\n${fence}\nd\n${fence}\nMudou.\n`);
+    await page.waitForTimeout(1500);
+    await expect(kind).toHaveValue('gelo');
+
+    await card.getByRole('button', { name: 'Voltar ao automático' }).click();
+    await expect(kind).toHaveValue('metalico');
+    await expect(card.getByTestId('planet-auto')).toBeVisible();
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
 });

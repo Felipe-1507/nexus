@@ -60,10 +60,16 @@ export const galaxyGraphSchema = z.object({
       chars: z.number().int().nonnegative(),
       /** Número de rotas (links de e para outras notas). */
       degree: z.number().int(),
+      /** Blocos de código, imagens e outros anexos incorporados (aparência automática do planeta). */
+      codeBlocks: z.number().int().nonnegative().optional(),
+      images: z.number().int().nonnegative().optional(),
+      attachments: z.number().int().nonnegative().optional(),
     }),
   ),
   /** Pares de índices em `notes`, sem repetição e sem link para a própria nota. */
   links: z.array(z.tuple([z.number().int(), z.number().int()])),
+  /** Sentido de cada rota, na ordem de `links`: 1 = do primeiro para o segundo, 2 = o contrário, 3 = os dois. */
+  directions: z.array(z.number().int().min(1).max(3)).optional(),
 });
 export type GalaxyGraph = z.infer<typeof galaxyGraphSchema>;
 

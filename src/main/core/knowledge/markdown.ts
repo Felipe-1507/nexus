@@ -12,9 +12,17 @@ export interface ParsedNote {
   tags: string[];
   links: WikiLink[];
   aliases: string[];
+  /** Blocos de código (```), para a aparência do planeta. */
+  codeBlocks: number;
+  /** Imagens incorporadas (`![[foto.png]]` ou `![](foto.png)`). */
+  images: number;
+  /** Outros arquivos incorporados (PDF, áudio...), sem repetição. */
+  attachments: string[];
 }
 
 const SUMMARY_MAX = 140;
+const ATTACHMENTS_MAX = 30;
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
 
 function asStrings(v: unknown): string[] {
   if (typeof v === 'string') return v.split(/[,\s]+/).filter(Boolean);
@@ -77,5 +85,34 @@ export function parseNote(content: string, fileName: string): ParsedNote {
     if (target) links.set(target.toLowerCase(), { target });
   }
 
-  return { title, summary, tags: [...tags], links: [...links.values()], aliases: asStrings(data.aliases) };
+  // Arquivos incorporados (fora dos trechos de código): imagens contam à parte dos outros anexos.
+  const embeds = new Set<string>();
+  for (const m of prose.matchAll(/!\[\[([^\]|#\n]+)(?:[|#][^\]\n]*)?\]\]/g)) embeds.add(m[1]!.trim());
+  for (const m of prose.matchAll(/!\[[^\]\n]*\]\(<?([^)>\s]+)>?(?:\s+"[^"]*")?\)/g)) {
+    if (/^[a-z]+:\/\//i.test(m[1]!)) continue;
+    try {
+      embeds.add(decodeURIComponent(m[1]!).trim());
+    } catch {
+      embeds.add(m[1]!.trim());
+    }
+  }
+  let images = 0;
+  const attachments: string[] = [];
+  for (const e of embeds) {
+    if (!/\.[a-z0-9]{2,5}$/i.test(e) || /\.md$/i.test(e)) continue;
+    if (IMAGE_EXT.test(e)) images++;
+    else attachments.push(e);
+  }
+  const fences = body.match(/^[ \t]*```/gm)?.length ?? 0;
+
+  return {
+    title,
+    summary,
+    tags: [...tags],
+    links: [...links.values()],
+    aliases: asStrings(data.aliases),
+    codeBlocks: Math.ceil(fences / 2),
+    images,
+    attachments: attachments.slice(0, ATTACHMENTS_MAX),
+  };
 }

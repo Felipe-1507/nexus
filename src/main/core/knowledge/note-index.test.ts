@@ -7,7 +7,20 @@ import { Vault } from './vault';
 
 function note(path: string, links: string[] = [], extra: Partial<NoteMeta> = {}): NoteMeta {
   const title = path.replace(/^.*\//, '').replace(/\.md$/, '');
-  return { path, title, summary: '', tags: [], links, aliases: [], mtimeMs: 1, chars: 0, ...extra };
+  return {
+    path,
+    title,
+    summary: '',
+    tags: [],
+    links,
+    aliases: [],
+    mtimeMs: 1,
+    chars: 0,
+    codeBlocks: 0,
+    images: 0,
+    attachments: [],
+    ...extra,
+  };
 }
 
 describe('grafo da galáxia', () => {
@@ -18,7 +31,9 @@ describe('grafo da galáxia', () => {
       note('Ideias.md', ['trabalho/conciliação']),
       note('Pessoal/Leituras.md'),
     ]);
-    const { notes, links } = index.graph();
+    const { notes, links, directions } = index.graph();
+    // Conciliação e Bancos se citam (3); Ideias cita Conciliação, o segundo do par cita o primeiro (2).
+    expect(directions).toEqual([3, 2]);
     expect(notes.map((n) => [n.path, n.system, n.degree])).toEqual([
       ['Trabalho/Conciliação.md', 'Trabalho', 2],
       ['Trabalho/Bancos.md', 'Trabalho', 1],

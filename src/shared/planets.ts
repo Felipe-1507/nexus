@@ -6,7 +6,7 @@ import { mixHex } from './palette';
  * o planeta é sempre o mesmo). O usuário pode trocar qualquer detalhe, e o que ele trocar fica guardado à parte.
  */
 
-export const PLANET_KINDS = ['rochoso', 'gasoso', 'oceano', 'gelo', 'lava', 'deserto'] as const;
+export const PLANET_KINDS = ['rochoso', 'gasoso', 'oceano', 'gelo', 'lava', 'deserto', 'metalico'] as const;
 export type PlanetKind = (typeof PLANET_KINDS)[number];
 
 export const PLANET_KIND_LABELS: Record<PlanetKind, string> = {
@@ -16,6 +16,7 @@ export const PLANET_KIND_LABELS: Record<PlanetKind, string> = {
   gelo: 'Gelo',
   lava: 'Lava',
   deserto: 'Deserto',
+  metalico: 'Metálico',
 };
 
 export const DETAIL_MAX_CHARS = 300;
@@ -91,6 +92,13 @@ const KIND_COLORS: Record<PlanetKind, Array<[string, string]>> = {
     ['#d9a27a', '#9a4f3b'],
     ['#e8cf94', '#b98a4e'],
   ],
+  // a: painéis claros, b: casco escuro (as linhas acendem na cor de a).
+  metalico: [
+    ['#9fd4ff', '#3a4656'],
+    ['#b6f0d0', '#36463f'],
+    ['#ffd08a', '#4a4036'],
+    ['#d7c4ff', '#3e3a52'],
+  ],
 };
 
 function pick<T>(items: readonly T[], r: number): T {
@@ -123,9 +131,49 @@ export function generatePlanetStyle(notePath: string): PlanetStyle {
   };
 }
 
-/** O sorteio com o que o usuário trocou por cima. */
-export function resolvePlanetStyle(notePath: string, override?: PlanetOverride | null): PlanetStyle {
+/** O que a nota tem e que muda a aparência automática do planeta (vem do índice, sem ler a nota de novo). */
+export interface NoteTraits {
+  chars: number;
+  degree: number;
+  codeBlocks?: number;
+  images?: number;
+}
+
+/** Notas com pelo menos estes blocos de código viram planetas metálicos; acima destes caracteres, gigantes gasosos. */
+export const AUTO_RULES = { codeBlocks: 2, giantChars: 8000, smallChars: 600, ringDegree: 6 } as const;
+const MIDDLE_KINDS: PlanetKind[] = ['oceano', 'gelo', 'deserto', 'lava', 'rochoso'];
+
+/**
+ * Aparência automática: o tipo e os detalhes refletem a nota. Muito código: metálico. Extensa: gigante gasoso. Curta:
+ * rochoso. Muitas conexões: anéis. Imagens: atmosfera luminosa. No meio-termo fica o sorteio estável (sem gasoso,
+ * reservado às notas extensas), para a galáxia continuar variada. Cores e detalhes continuam sorteados pelo caminho.
+ */
+export function autoPlanetStyle(notePath: string, traits?: NoteTraits | null): PlanetStyle {
   const base = generatePlanetStyle(notePath);
+  if (!traits) return base;
+  let kind: PlanetKind;
+  if ((traits.codeBlocks ?? 0) >= AUTO_RULES.codeBlocks) kind = 'metalico';
+  else if (traits.chars >= AUTO_RULES.giantChars) kind = 'gasoso';
+  else if (traits.chars < AUTO_RULES.smallChars) kind = 'rochoso';
+  else kind = base.kind === 'gasoso' ? pick(MIDDLE_KINDS, hash01(`mid:${notePath}`)) : base.kind;
+  return {
+    ...base,
+    kind,
+    ring: traits.degree >= AUTO_RULES.ringDegree,
+    atmosphere: (traits.images ?? 0) > 0 || base.atmosphere,
+  };
+}
+
+/**
+ * A aparência automática com o que o usuário trocou por cima: a escolha manual sempre vale, até ele voltar ao
+ * automático (apagar a escolha).
+ */
+export function resolvePlanetStyle(
+  notePath: string,
+  override?: PlanetOverride | null,
+  traits?: NoteTraits | null,
+): PlanetStyle {
+  const base = autoPlanetStyle(notePath, traits);
   if (!override) return base;
   return {
     kind: override.kind ?? base.kind,

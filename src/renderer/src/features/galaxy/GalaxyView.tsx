@@ -49,7 +49,7 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
   const setPlanet = useSetPlanetStyle(workspaceId);
   // Aparência de cada planeta: o sorteio da nota com o que o usuário trocou por cima.
   const styles = useMemo(
-    () => graph.data?.notes.map((n) => resolvePlanetStyle(n.path, overrides?.[n.path])) ?? null,
+    () => graph.data?.notes.map((n) => resolvePlanetStyle(n.path, overrides?.[n.path], n)) ?? null,
     [graph.data, overrides],
   );
   const layout = useMemo(

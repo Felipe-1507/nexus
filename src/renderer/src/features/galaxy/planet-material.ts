@@ -107,9 +107,23 @@ const PLANET_FRAGMENT = /* glsl */ `
       float veins = 1.0 - smoothstep(0.0, 0.05, abs(fbm(q * 1.3) - 0.5));
       col = mix(vA * (0.7 + 0.5 * n), vB, veins);
       emissive = veins * 1.1;
-    } else {                     // deserto: dunas em faixas suaves
+    } else if (kind < 5.5) {     // deserto: dunas em faixas suaves
       float band = 0.5 + 0.5 * sin(p.y * 7.0 + n * 5.0 + seed);
       col = mix(vB, vA, mix(n, band, 0.5));
+    } else {                     // metálico: casco em placas, com linhas acesas entre elas
+      float lat = asin(clamp(p.y, -1.0, 1.0));
+      float lon = atan(p.z, p.x);
+      vec2 grid = vec2(lon * 3.0, lat * 4.0) + seed;
+      vec2 cell = abs(fract(grid) - 0.5);
+      float seam = 1.0 - smoothstep(0.0, 0.05, 0.5 - max(cell.x, cell.y));
+      float plate = vnoise(vec3(floor(grid), seed));
+      col = mix(vB, mix(vB, vA, 0.35), plate) * (0.9 + 0.2 * n);
+      // Sulcos escuros entre as placas; só alguns acendem (circuitos), o resto do casco fica fosco.
+      float lit = seam * step(0.72, vnoise(vec3(floor(grid * 0.5), seed + 3.0)));
+      col *= 1.0 - seam * 0.55;
+      col = mix(col, vA, lit * 0.85);
+      emissive = lit * 1.1;
+      spec = 0.8;
     }
 
     vec3 L = normalize(vec3(0.45, 0.55, 0.7));

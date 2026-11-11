@@ -33,7 +33,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GalaxyGraph } from '@shared/knowledge';
 import { hash01, planetColors, type PlanetStyle } from '@shared/planets';
 import type { GalaxyLayout } from './layout';
-import { createComets, createFlows } from './route-effects';
+import { createComets, createFlows, isImportantRoute } from './route-effects';
 import { createShips, galaxyRadius } from './ship-effects';
 import { ActivityLayer, type Spot } from './activity-effects';
 import { createNebulaMaterial, createShootingStars, haloBuffer, seeded, shaderClock, type Effect } from './effects';
@@ -674,9 +674,11 @@ export class GalaxyScene {
       const pa = this.layout.notes[a]!;
       const pb = this.layout.notes[b]!;
       positions.set([pa.x, pa.y, pa.z, pb.x, pb.y, pb.z], i * 6);
-      c.set(this.layout.systems[pa.system]!.color);
+      // Conexões importantes brilham mais (a mistura é aditiva: cor mais forte = linha mais clara).
+      const boost = isImportantRoute(this.graph, i) ? 2.2 : 1;
+      c.set(this.layout.systems[pa.system]!.color).multiplyScalar(boost);
       colors.set([c.r, c.g, c.b], i * 6);
-      c.set(this.layout.systems[pb.system]!.color);
+      c.set(this.layout.systems[pb.system]!.color).multiplyScalar(boost);
       colors.set([c.r, c.g, c.b], i * 6 + 3);
     });
     const geometry = new BufferGeometry();

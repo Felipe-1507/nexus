@@ -14,6 +14,10 @@ export interface NoteMeta {
   mtimeMs: number;
   /** Tamanho do conteúdo em caracteres. */
   chars: number;
+  codeBlocks: number;
+  images: number;
+  /** Arquivos incorporados que não são imagens nem notas. */
+  attachments: string[];
 }
 
 const stem = (p: string) => p.replace(/\.md$/i, '').toLowerCase();
@@ -78,8 +82,10 @@ export class NoteIndex {
   graph(): GalaxyGraph {
     const position = new Map(this.notes.map((n, i) => [n.path, i]));
     const degree = new Array<number>(this.notes.length).fill(0);
-    const seen = new Set<string>();
+    const seen = new Map<string, number>();
     const links: Array<[number, number]> = [];
+    // Sentido de cada rota: 1 = do primeiro para o segundo, 2 = o contrário, 3 = os dois se citam.
+    const directions: number[] = [];
     this.notes.forEach((n, i) => {
       for (const target of n.links) {
         const resolved = this.resolve(target, n.path);
@@ -87,9 +93,15 @@ export class NoteIndex {
         if (j === undefined || j === i) continue;
         const pair: [number, number] = i < j ? [i, j] : [j, i];
         const key = `${pair[0]}:${pair[1]}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+        const bit = i < j ? 1 : 2;
+        const known = seen.get(key);
+        if (known !== undefined) {
+          directions[known]! |= bit;
+          continue;
+        }
+        seen.set(key, links.length);
         links.push(pair);
+        directions.push(bit);
         degree[i]!++;
         degree[j]!++;
       }
@@ -102,8 +114,11 @@ export class NoteIndex {
       mtimeMs: n.mtimeMs,
       chars: n.chars,
       degree: degree[i]!,
+      codeBlocks: n.codeBlocks,
+      images: n.images,
+      attachments: n.attachments.length,
     }));
-    return { notes, links };
+    return { notes, links, directions };
   }
 
   /**
@@ -170,6 +185,9 @@ export async function buildIndex(vault: Vault, previous?: NoteIndex): Promise<No
           links: parsed.links.map((l) => l.target),
           aliases: parsed.aliases,
           mtimeMs: file.mtimeMs,
+          codeBlocks: parsed.codeBlocks,
+          images: parsed.images,
+          attachments: parsed.attachments,
         };
       } catch {
         // Nota que sumiu ou não pôde ser lida durante a varredura: fica fora desta vez.

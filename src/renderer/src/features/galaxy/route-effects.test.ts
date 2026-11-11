@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GalaxyGraph } from '@shared/knowledge';
 import { layoutGalaxy } from './layout';
-import { cometPairs, pickFlowRoutes } from './route-effects';
+import { cometPairs, createFlows, isImportantRoute, pickFlowRoutes } from './route-effects';
 
 function graph(notes: Array<[string, string[]?, number?]>, links: Array<[number, number]>): GalaxyGraph {
   return {
@@ -61,5 +61,45 @@ describe('cometas', () => {
     const notes: Array<[string, string[]]> = Array.from({ length: 40 }, (_, i) => [`S${i}/n.md`, ['comum']]);
     const g = graph(notes, []);
     expect(cometPairs(g, layoutGalaxy(g, 0))).toHaveLength(4);
+  });
+});
+
+describe('direção e importância das rotas', () => {
+  it('a luz corre de quem cita para quem é citado, e nos dois sentidos quando as notas se citam', async () => {
+    const { ShaderMaterial } = await import('three');
+    type Points = import('three').Points;
+    const { GALAXY_PROFILES } = await import('./quality');
+    const g = graph(
+      [
+        ['A/x.md', [], 1],
+        ['B/y.md', [], 2],
+        ['C/z.md', [], 1],
+      ],
+      [
+        [0, 1],
+        [1, 2],
+      ],
+    );
+    g.directions = [3, 2];
+    const flows = createFlows(g, layoutGalaxy(g, 0), GALAXY_PROFILES.original, new ShaderMaterial());
+    // Rota 0 nos dois sentidos (2 pontos) + rota 1 só de z para y (1 ponto).
+    expect((flows!.objects[0] as Points).geometry.getAttribute('position').count).toBe(3);
+  });
+
+  it('conexão importante: as notas se citam ou ligam duas notas centrais', () => {
+    const g = graph(
+      [
+        ['A/x.md', [], 5],
+        ['B/y.md', [], 5],
+        ['C/z.md', [], 1],
+      ],
+      [
+        [0, 1],
+        [1, 2],
+        [0, 2],
+      ],
+    );
+    g.directions = [1, 3, 1];
+    expect([0, 1, 2].map((r) => isImportantRoute(g, r))).toEqual([true, true, false]);
   });
 });

@@ -14,7 +14,8 @@ const SAVE_DELAY_MS = 400;
 
 /**
  * Editor do planeta selecionado: tipo, cor, anéis, atmosfera, um novo sorteio e uma anotação. Cada mudança aparece na
- * hora na galáxia e é gravada logo depois. "Voltar ao aleatório" apaga as escolhas e o planeta volta ao sorteio.
+ * hora na galáxia e é gravada logo depois e vale até "Voltar ao automático", que apaga as escolhas: o planeta volta a
+ * refletir a nota (código, tamanho, conexões, imagens).
  */
 export function PlanetEditor({
   style,
@@ -31,7 +32,7 @@ export function PlanetEditor({
   const [detail, setDetail] = useState(style.detail);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  // Outro planeta (ou "voltar ao aleatório"): o texto acompanha.
+  // Outro planeta (ou "voltar ao automático"): o texto acompanha.
   useEffect(() => setDetail(style.detail), [style.detail]);
 
   const field =
@@ -123,14 +124,18 @@ export function PlanetEditor({
         />
       </label>
 
-      {hasOverride && (
+      {hasOverride ? (
         <button
           type="button"
           onClick={onReset}
           className="flex items-center gap-1 text-[11px] text-white/50 underline-offset-2 hover:text-white hover:underline"
         >
-          <RotateCcw size={11} /> Voltar ao aleatório
+          <RotateCcw size={11} /> Voltar ao automático
         </button>
+      ) : (
+        <p className="text-[11px] text-white/45" data-testid="planet-auto">
+          Automático: segue o conteúdo da nota. Qualquer mudança aqui passa a valer no lugar.
+        </p>
       )}
     </div>
   );

@@ -65,3 +65,30 @@ describe('sanitizeFileName', () => {
     expect(sanitizeFileName('///')).toBeNull();
   });
 });
+
+describe('metadados para a aparência do planeta', () => {
+  it('conta blocos de código, imagens e outros anexos incorporados (fora do código)', () => {
+    const note = parseNote(
+      [
+        '# Nota',
+        '![[diagrama.png]] e ![[Foto da sala.JPG|300]]',
+        '![capa](imagens/capa%20nova.webp) ![externa](https://site/x.png)',
+        '![[contrato.pdf]] ![[contrato.pdf]] ![[Outra nota]] ![[audio.m4a]]',
+        '```ts',
+        'const x = "![[falso.png]]";',
+        '```',
+        '```',
+        'mais código',
+        '```',
+      ].join('\n'),
+      'nota.md',
+    );
+    expect(note.codeBlocks).toBe(2);
+    expect(note.images).toBe(3);
+    expect(note.attachments).toEqual(['contrato.pdf', 'audio.m4a']);
+  });
+
+  it('nota sem nada disso', () => {
+    expect(parseNote('# Só texto\n\nNada aqui.', 'a.md')).toMatchObject({ codeBlocks: 0, images: 0, attachments: [] });
+  });
+});

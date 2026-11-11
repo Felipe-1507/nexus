@@ -7,6 +7,7 @@ import {
   PLANET_MAX_SIZE,
   planetSize,
   resolvePlanetStyle,
+  autoPlanetStyle,
 } from './planets';
 
 describe('aparência dos planetas', () => {
@@ -18,7 +19,10 @@ describe('aparência dos planetas', () => {
 
   it('com muitas notas, aparecem todos os tipos, alguns planetas com anéis e a maioria com atmosfera', () => {
     const styles = Array.from({ length: 600 }, (_, i) => generatePlanetStyle(`Pasta ${i % 7}/Nota ${i}.md`));
-    for (const kind of PLANET_KINDS) expect(styles.some((s) => s.kind === kind)).toBe(true);
+    // O metálico não sai no sorteio: é das notas com código (aparência automática).
+    for (const kind of PLANET_KINDS.filter((k) => k !== 'metalico'))
+      expect(styles.some((s) => s.kind === kind)).toBe(true);
+    expect(styles.some((s) => s.kind === 'metalico')).toBe(false);
     const rings = styles.filter((s) => s.ring).length / styles.length;
     const atmos = styles.filter((s) => s.atmosphere).length / styles.length;
     expect(rings).toBeGreaterThan(0.08);
@@ -51,6 +55,45 @@ describe('aparência dos planetas', () => {
     expect(planetOverrideSchema.safeParse({ kind: 'estrela' }).success).toBe(false);
     expect(planetOverrideSchema.safeParse({ color: 'azul' }).success).toBe(false);
     expect(planetOverrideSchema.safeParse({ detail: 'x'.repeat(301) }).success).toBe(false);
+  });
+});
+
+describe('aparência automática', () => {
+  const traits = (over: Partial<{ chars: number; degree: number; codeBlocks: number; images: number }> = {}) => ({
+    chars: 2000,
+    degree: 1,
+    codeBlocks: 0,
+    images: 0,
+    ...over,
+  });
+
+  it('reflete a nota: código vira metálico, extensa vira gigante gasoso, curta vira rochoso', () => {
+    expect(autoPlanetStyle('a.md', traits({ codeBlocks: 3 })).kind).toBe('metalico');
+    expect(autoPlanetStyle('a.md', traits({ chars: 20_000 })).kind).toBe('gasoso');
+    expect(autoPlanetStyle('a.md', traits({ chars: 100 })).kind).toBe('rochoso');
+    // Código pesa mais que o tamanho.
+    expect(autoPlanetStyle('a.md', traits({ chars: 20_000, codeBlocks: 4 })).kind).toBe('metalico');
+  });
+
+  it('no meio-termo, nunca gasoso, e a galáxia continua variada', () => {
+    const kinds = new Set(Array.from({ length: 300 }, (_, i) => autoPlanetStyle(`P/${i}.md`, traits()).kind));
+    expect(kinds.has('gasoso')).toBe(false);
+    expect(kinds.has('metalico')).toBe(false);
+    expect(kinds.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('muitas conexões dão anéis; imagens dão atmosfera', () => {
+    expect(autoPlanetStyle('a.md', traits({ degree: 8 })).ring).toBe(true);
+    expect(autoPlanetStyle('a.md', traits({ degree: 1 })).ring).toBe(false);
+    expect(autoPlanetStyle('a.md', traits({ images: 2 })).atmosphere).toBe(true);
+  });
+
+  it('a escolha manual sempre vale por cima do automático, até ser apagada', () => {
+    const t = traits({ codeBlocks: 5, degree: 9 });
+    expect(resolvePlanetStyle('a.md', { kind: 'gelo', ring: false }, t)).toMatchObject({ kind: 'gelo', ring: false });
+    expect(resolvePlanetStyle('a.md', null, t)).toMatchObject({ kind: 'metalico', ring: true });
+    // Mudar só a cor mantém o tipo automático.
+    expect(resolvePlanetStyle('a.md', { color: '#ff0000' }, t)).toMatchObject({ kind: 'metalico', color: '#ff0000' });
   });
 });
 

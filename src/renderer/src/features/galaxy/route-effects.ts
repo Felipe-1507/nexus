@@ -57,24 +57,41 @@ export function cometPairs(graph: GalaxyGraph, layout: GalaxyLayout, max = 300):
 
 const FLOW_SPEED = 7;
 
-/** Um ponto de luz correndo por rota escolhida, num sentido sorteado (a direção real dos links chega na G6). */
+/** Conexão importante (brilho especial na rota): as duas notas se citam, ou ela liga duas notas centrais. */
+export function isImportantRoute(graph: GalaxyGraph, r: number): boolean {
+  const [a, b] = graph.links[r]!;
+  return graph.directions?.[r] === 3 || Math.min(graph.notes[a]!.degree, graph.notes[b]!.degree) >= 4;
+}
+
+/**
+ * Um ponto de luz correndo por rota escolhida, de quem cita para quem é citado; nos dois sentidos quando as notas se
+ * citam. O limite do perfil vale para o total de pontos.
+ */
 export function createFlows(
   graph: GalaxyGraph,
   layout: GalaxyLayout,
   profile: GalaxyProfile,
   material: ShaderMaterial,
 ): Effect | null {
-  const routes = pickFlowRoutes(graph, layout, profile.limits.flowingRoutes);
+  const limit = profile.limits.flowingRoutes;
+  const routes = pickFlowRoutes(graph, layout, limit);
   if (routes.length === 0) return null;
-  const halo = haloBuffer(routes.length, material);
+  // Sentido real do link: quem cita → quem é citado. Se as duas notas se citam, a luz corre nos dois sentidos.
+  const legs: Array<[number, number, number]> = [];
+  for (const r of routes) {
+    const [i, j] = graph.links[r]!;
+    const dir = graph.directions?.[r] ?? (hash01(`flow:${i}:${j}`) < 0.5 ? 1 : 2);
+    if (dir & 1) legs.push([i, j, r]);
+    if (dir & 2) legs.push([j, i, r]);
+  }
+  legs.splice(limit);
+  const halo = haloBuffer(legs.length, material);
   halo.points.frustumCulled = false;
   const color = new Color();
   const other = new Color();
-  const flows: Array<{ a: PlacedNote; b: PlacedNote; u: number; rate: number }> = routes.map((r, k) => {
-    const [i, j] = graph.links[r]!;
-    const forward = hash01(`flow:${i}:${j}`) < 0.5;
-    const a = layout.notes[forward ? i : j]!;
-    const b = layout.notes[forward ? j : i]!;
+  const flows: Array<{ a: PlacedNote; b: PlacedNote; u: number; rate: number }> = legs.map(([i, j], k) => {
+    const a = layout.notes[i]!;
+    const b = layout.notes[j]!;
     color.set(layout.systems[a.system]!.color).lerp(other.set(layout.systems[b.system]!.color), 0.5);
     color.lerp(other.set('#ffffff'), 0.35);
     const length = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z));
