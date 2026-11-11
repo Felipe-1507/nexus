@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { reapOrphans, systemReaperDeps } from './agent/orphan-reaper';
 import { BRAND, PALETTE } from '@shared/brand';
 import { paletteCss, withAppearance } from '@shared/palette';
 import { CHAT_EVENT_CHANNEL } from '@shared/chat';
@@ -185,6 +186,10 @@ function bootstrap(): void {
     createQuery: (args) => query(args),
     env: process.env,
     onStderr: (conversationId, data) => log.debug(`claude[${conversationId.slice(0, 8)}] ${data.trim()}`),
+  });
+  // Processos de uma execução anterior que o Windows não encerrou junto (Nexus finalizado à força).
+  void reapOrphans(systemReaperDeps).then((pids) => {
+    if (pids.length > 0) log.info('Processos do Claude Code órfãos encerrados', { pids });
   });
   const batcher = createEventBatcher((event) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(CHAT_EVENT_CHANNEL, event);

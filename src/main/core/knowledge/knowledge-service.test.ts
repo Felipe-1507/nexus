@@ -85,6 +85,17 @@ describe('KnowledgeService', () => {
     expect(big.omitted).toBeGreaterThan(0);
   });
 
+  it('quando o índice não cabe, ficam as notas mais ligadas, não só as mexidas por último', async () => {
+    const ws = workspaces.create({ name: 'A', ...base });
+    note(ws.id, 'Mapa.md', '# Mapa\n\nVisão geral. [[n0]] [[n1]] [[n2]] [[n3]]');
+    for (let i = 0; i < 4; i++) note(ws.id, `n${i}.md`, `# Nota ${i}\n\n[[Mapa]]`);
+    for (let i = 0; i < 200; i++) note(ws.id, `solta${i}.md`, `# Solta ${i}\n\n${'texto '.repeat(20)}`);
+    const prompt = await knowledge.promptSection(ws.id);
+    expect(prompt.omitted).toBeGreaterThan(0);
+    expect(prompt.lines[0]).toContain('Mapa.md');
+    expect(prompt.lines.join('\n')).toContain('n0.md');
+  }, 20_000);
+
   it('pedidos simultâneos dividem a mesma montagem, e uma alteração no meio dela não deixa o índice velho', async () => {
     const ws = workspaces.create({ name: 'A', ...base });
     knowledge.create(ws.id, '', 'Primeira');

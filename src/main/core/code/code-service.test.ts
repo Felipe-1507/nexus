@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { tryJunction } from '../../fs/test-junction';
 import { migrate } from '../../persistence/migrator';
 import { migrations } from '../../persistence/migrations';
 import { ProjectService } from '../projects/project-service';
@@ -169,11 +170,11 @@ describe('CodeService', () => {
     });
   });
 
-  it('não sai da pasta do escopo, nem por junction', async () => {
+  it('não sai da pasta do escopo, nem por junction', async (ctx) => {
     const { scope, repo } = await setup();
     fs.writeFileSync(path.join(root, 'fora.txt'), 'segredo');
     fs.mkdirSync(path.join(root, 'fora'));
-    fs.symlinkSync(path.join(root, 'fora'), path.join(repo, 'atalho'), 'junction');
+    if (!tryJunction(path.join(root, 'fora'), path.join(repo, 'atalho'))) ctx.skip();
     await expect(code.read(scope, '../fora.txt')).rejects.toThrow(/fora da pasta/);
     await expect(code.read(scope, 'C:/Windows/win.ini')).rejects.toThrow(/fora da pasta/);
     await expect(code.list(scope, 'atalho')).rejects.toThrow(/fora da pasta/);

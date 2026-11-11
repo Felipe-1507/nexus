@@ -15,6 +15,7 @@ type ChatHandlers = Pick<
   | 'chat:interrupt'
   | 'chat:enqueue'
   | 'chat:dequeue'
+  | 'chat:queues'
   | 'attachments:save'
   | 'attachments:thumb'
   | 'attachments:usage'
@@ -45,6 +46,7 @@ export function chatHandlers(
     }),
     'chat:enqueue': (input) => chat.enqueue(input),
     'chat:dequeue': ({ conversationId, id }) => chat.dequeue(conversationId, id),
+    'chat:queues': () => chat.allQueued(),
     'chat:interrupt': async ({ conversationId }) => {
       await chat.interrupt(conversationId);
       return null;

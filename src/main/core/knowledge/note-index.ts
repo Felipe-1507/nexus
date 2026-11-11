@@ -107,21 +107,32 @@ export class NoteIndex {
   }
 
   /**
-   * Linhas do índice para o prompt do Claude, das notas mais recentes para as mais antigas, até o limite de
-   * caracteres. Curto de propósito: o Claude abre a nota que precisar.
+   * Linhas do índice para o prompt do Claude, até o limite de caracteres. Curto de propósito: o Claude abre a nota
+   * que precisar. Cabendo tudo, vão todas (das mais recentes para as mais antigas). Se não couber, ficam as mais
+   * ligadas às outras (mapas e notas centrais) e, entre iguais, as mais recentes, em vez de só as mexidas por último.
    */
   promptLines(budget = 6000): { lines: string[]; omitted: number } {
+    const line = (n: NoteMeta) => {
+      const tags = n.tags.length ? ` [${n.tags.map((t) => `#${t}`).join(' ')}]` : '';
+      return `- ${n.path} — ${n.title}${n.summary ? `: ${n.summary}` : ''}${tags}`;
+    };
+    const byRecent = [...this.notes].sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const total = byRecent.reduce((sum, n) => sum + line(n).length + 1, 0);
+    let order = byRecent;
+    if (total > budget) {
+      const degree = new Map(this.graph().notes.map((n) => [n.path, n.degree]));
+      // A ordenação é estável: notas com o mesmo número de ligações continuam da mais recente para a mais antiga.
+      order = [...byRecent].sort((a, b) => (degree.get(b.path) ?? 0) - (degree.get(a.path) ?? 0));
+    }
     const lines: string[] = [];
     let used = 0;
-    const sorted = [...this.notes].sort((a, b) => b.mtimeMs - a.mtimeMs);
-    for (const n of sorted) {
-      const tags = n.tags.length ? ` [${n.tags.map((t) => `#${t}`).join(' ')}]` : '';
-      const line = `- ${n.path} — ${n.title}${n.summary ? `: ${n.summary}` : ''}${tags}`;
-      if (used + line.length > budget) break;
-      lines.push(line);
-      used += line.length + 1;
+    for (const n of order) {
+      const text = line(n);
+      if (used + text.length > budget) break;
+      lines.push(text);
+      used += text.length + 1;
     }
-    return { lines, omitted: sorted.length - lines.length };
+    return { lines, omitted: order.length - lines.length };
   }
 }
 

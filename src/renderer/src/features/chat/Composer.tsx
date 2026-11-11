@@ -15,9 +15,32 @@ interface ComposerProps {
   workspaceId?: string | null;
   /** "Editar" numa mensagem antiga: devolve o texto e os anexos ao campo. */
   prefill?: { text: string; attachments: Attachment[]; nonce: number };
+  /** Identifica a conversa: o texto ainda não enviado fica guardado por chave (sobrevive a trocar de conversa e a recarregar). */
+  draftKey?: string;
   onStop: () => void;
   /** Controles na linha de baixo, à esquerda do botão de enviar (ex.: seletor de modelo). */
   footer?: ReactNode;
+}
+
+const DRAFT_PREFIX = 'nexus.draft.';
+
+function readDraft(key?: string): string {
+  if (!key) return '';
+  try {
+    return localStorage.getItem(DRAFT_PREFIX + key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeDraft(key: string | undefined, text: string): void {
+  if (!key) return;
+  try {
+    if (text) localStorage.setItem(DRAFT_PREFIX + key, text);
+    else localStorage.removeItem(DRAFT_PREFIX + key);
+  } catch {
+    // armazenamento indisponível: o rascunho só não sobrevive
+  }
 }
 
 /** Campo de mensagem: Enter envia, Shift+Enter quebra linha. Durante a resposta, o botão vira "Parar". */
@@ -31,8 +54,19 @@ export function Composer({
   footer,
   workspaceId,
   prefill,
+  draftKey,
 }: ComposerProps) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => readDraft(draftKey));
+  const loadedKey = useRef(draftKey);
+  useEffect(() => {
+    if (loadedKey.current === draftKey) return;
+    loadedKey.current = draftKey;
+    setText(readDraft(draftKey));
+  }, [draftKey]);
+  useEffect(() => {
+    writeDraft(draftKey, text);
+    // Só o texto dispara a gravação: ao trocar de conversa, o texto novo (lido acima) é que vai para a chave nova.
+  }, [text]);
   const [attachments, setAttachments] = useState<Array<Attachment & { thumb?: string | null }>>([]);
   const [uploading, setUploading] = useState(0);
   const [attachError, setAttachError] = useState<string | null>(null);

@@ -68,6 +68,10 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
   }, [messages.data, live?.draft, live?.activities.length]);
 
   const list = messages.data ?? [];
+  // Conversas muito longas mostram só o fim; as anteriores entram sob demanda (mantém a tela leve).
+  const [shown, setShown] = useState(PAGE_SIZE);
+  useEffect(() => setShown(PAGE_SIZE), [conversationId]);
+  const hidden = Math.max(0, list.length - shown);
   const empty = !conversationId || (messages.isSuccess && list.length === 0 && !live);
   // "Desfazer" só na última resposta, e nunca durante uma resposta em andamento.
   const lastAssistantId = live ? undefined : list.findLast((m) => m.role === 'assistant')?.id;
@@ -165,7 +169,17 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
                   {messages.error.message}
                 </p>
               )}
-              {list.map((m) => (
+              {hidden > 0 && (
+                <button
+                  type="button"
+                  data-testid="show-earlier"
+                  onClick={() => setShown((n) => n + PAGE_SIZE)}
+                  className="mx-auto block rounded-md border border-border px-3 py-1.5 text-xs text-muted transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  Mostrar mensagens anteriores ({hidden})
+                </button>
+              )}
+              {list.slice(hidden).map((m) => (
                 <MessageItem key={m.id} message={m} workspaceId={workspace.id} canUndo={m.id === lastAssistantId} />
               ))}
               {live && (
@@ -219,6 +233,7 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
             running={Boolean(live)}
             workspaceId={workspace.id}
             prefill={prefill}
+            draftKey={conversationId ?? `new:${workspace.id}:${scope ?? ''}`}
             onSend={onSend}
             onStop={() => conversationId && interrupt.mutate(conversationId)}
             footer={
@@ -256,6 +271,7 @@ function Thinking() {
 }
 
 const EMPTY_QUEUE: never[] = [];
+const PAGE_SIZE = 100;
 
 /** Mensagens que o usuário já escreveu e que esperam a resposta atual terminar. */
 function QueueList({

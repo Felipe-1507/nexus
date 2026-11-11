@@ -39,7 +39,7 @@ Este documento registra as decisões técnicas do Nexus e as revisões feitas so
 │ Main (Node)                                                       │
 │   core/ (workspaces, projetos, conversas, conhecimento, contexto, │
 │          permissões) · persistence/ (SQLite) · fs/ (caminhos)     │
-│   agent/ ── AgentEngine ── Claude Agent SDK                       │
+│   agent/ ── SessionManager ── Claude Agent SDK                     │
 └──────────────────────────────────│───────────────────────────────┘
                                    ▼ stdin/stdout (JSON, local, sem custo)
                      processo Claude Code (CLI instalado)
@@ -96,7 +96,8 @@ Global (configurações + instruções globais do Nexus)
 - `messages` (blocos em JSON e `seq`)
 - `turns` (custo, uso de tokens, `stop_reason`, erro)
 - `permission_rules`, `permission_audit`
-- `notes_index` e, depois, `notes_fts`
+- `file_changes` (Desfazer), `conversation_context` e `compactions` (contexto)
+- O índice das notas é montado em memória a partir dos arquivos (não há `notes_index`); `notes_fts` (busca de texto) é futuro
 - `settings`
 
 ## 6. Armazenamento
@@ -177,7 +178,7 @@ Um Workspace pode apontar o seu vault para uma pasta já existente (por exemplo,
 | Desktop | Electron, **electron-vite**, **electron-builder** (instalador NSIS) |
 | Interface | React, TypeScript strict, Vite, Tailwind v4, shadcn/ui (Radix), Lucide |
 | Estado | TanStack Query (dados do main) e Zustand (estado da interface) |
-| Conteúdo | react-markdown, remark-gfm, Shiki, **CodeMirror 6** (notas), **Monaco** (código), **Three.js** (galáxia) |
+| Conteúdo | react-markdown, remark-gfm, **CodeMirror 6** (notas), **Monaco** (código), **Three.js** (galáxia) |
 | Main | **Claude Agent SDK**, zod, **`node:sqlite`** com migrações SQL próprias ([ADR 0007](decisions/0007-node-sqlite.md)), chokidar (com *polling* para pastas de rede), electron-log |
 | Testes | Vitest (unidade e integração), Playwright para Electron (ponta a ponta) |
 | Pacotes | npm |
@@ -255,6 +256,11 @@ tests/e2e/ · spikes/ · docs/
 | 15.5 ✅ | Perguntas do Claude (AskUserQuestion) | A ferramenta de perguntas deixou de aparecer como "permitir/negar": vira um cartão com as opções (escolha única, múltipla e "Outra"), e as respostas voltam ao Claude em `answers`; "Dispensar" orienta o Claude a seguir com uma suposição | Unidade e E2E com o Claude real |
 | 15.6 ✅ | Renomear conversa | Duplo clique, F2 ou lápis na lista; o nome também é gravado na sessão do Claude Code (`renameSession`), então aparece igual no VS Code. Medido: trocar o esforço não regrava o cache da conversa (só trocar de modelo regrava) | Unidade e E2E com o Claude real |
 | 15.7 ✅ | Avisos de atualização | Faixa no topo: versão nova do Claude Code (consulta `registry.npmjs.org` no máximo a cada 6 horas, falha em silêncio; botão Atualizar abre `claude update` num console e, ao voltar, relê versão e modelos) e modelo novo na conta (compara com a lista já vista, guardada em `seenModels`; no primeiro uso nada é novidade). Os modelos vêm do Claude Code instalado, então um modelo novo só aparece depois de atualizá-lo | Unidade e E2E com o Claude real |
+| 15.8 ✅ | Segurança e robustez (análise do Fable 5.2) | Regra "sempre permitir" não vira regra ampla (`node -e`, `git -C`); fila de mensagens devolve a mensagem se o envio falha; backup do banco (`VACUUM INTO`, a cada 12 h, 5 cópias em `userData/backups`). |
+| 15.9 ✅ | Galáxia parada | Só desenha quando algo muda (câmera, hover, animação) e para com a aba escondida; menos CPU/GPU em repouso. |
+| 15.10 ✅ | Limpeza de processos e testes | Na abertura, encerra processos do Claude Code órfãos de um Nexus finalizado à força (`orphan-reaper.ts`, reconhece pela marca `--system-prompt-snapshot` e pai inexistente); testes de junction pulam sozinhos sem permissão; o watcher das notas ignora `node_modules`, `dist`, `out`, `build`. |
+| 15.11 ✅ | Rascunho e fila sobrevivem a recarregar | O texto ainda não enviado fica guardado por conversa (`localStorage`, também ao trocar de conversa); a fila de mensagens é recomposta pelo canal `chat:queues` (a fila vive no processo principal). |
+| 15.12 ✅ | Índice de notas e conversas longas | Se o índice das notas não cabe no prompt, ficam as mais ligadas (mapas) e não só as mexidas por último; a conversa mostra as últimas 100 mensagens com botão "Mostrar mensagens anteriores". Documentação corrigida (SessionManager, tabelas, sem Shiki). |
 | 14.10 ✅ | Vídeo de abertura | A abertura passou a tocar o vídeo da marca (`build/intro/intro.webm`, 720×720, 4 s) numa janela quadrada de cantos arredondados, sem JavaScript e com os controles do player escondidos. O app só aparece depois do vídeo inteiro. O vídeo vai fora do ASAR (`resources/intro` no instalador). Só vale para a marca padrão "Nexus" (o vídeo traz o nome desenhado); outras marcas e a falta dos arquivos usam a animação em SVG de antes | Unidade (arquivos, página sem script, controles escondidos, instalador leva a pasta) + E2E (vídeo carregado, janela 420×420, app só depois de 4 s) |
 | 14.11 ✅ | Respostas em segundo plano | Correção: quando o Claude "avisa quando terminar" uma tarefa em segundo plano, o Claude Code o acorda sozinho e ele escreve o resultado sem mensagem do usuário; o Nexus descartava essa resposta (só aceitava mensagens durante um turno iniciado por uma mensagem). Agora a resposta espontânea vira uma mensagem gravada da conversa, aparece em andamento na tela e a conversa conta como "respondendo" enquanto ela escreve. Conversas que não estão abertas ganham uma bolinha de "Resposta nova" na barra lateral. O processo não é mais fechado por ociosidade (10 min) enquanto houver tarefa em segundo plano rodando (até 2 h), porque fechá-lo matava a tarefa. Resposta espontânea vazia é descartada | Unidade (sessão, serviço de chat, tela) + E2E real com Haiku (comando de 25 s em segundo plano; o resultado aparece sozinho) |
 | 14.12 ✅ | Horário das mensagens | Cada mensagem, do usuário e do Claude, mostra o horário em que foi gravada, sempre visível e discreto ("14:32" no próprio dia, "ontem 14:32", "07/11 14:32" e com o ano quando for de outro). A dica ao passar o mouse traz a data completa com segundos. Usa o fuso do computador. O horário da resposta do Claude é o do fim dela | Unidade (formatação, virada do dia, data inválida) + E2E (horário em todas as mensagens, formato e dica) |

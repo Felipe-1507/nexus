@@ -39,6 +39,7 @@ export const IPC_CHANNELS = [
   'attachments:usage',
   'attachments:cleanup',
   'chat:dequeue',
+  'chat:queues',
   'context:get',
   'context:overview',
   'context:continuePreview',

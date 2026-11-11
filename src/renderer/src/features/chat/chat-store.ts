@@ -43,6 +43,8 @@ interface ChatState {
   /** Recompõe os pedidos pendentes (ex.: depois de recarregar a tela). */
   loadPending: (requests: PermissionRequest[]) => void;
   clearQueueError: (conversationId: string) => void;
+  /** Recompõe as filas de mensagens (ex.: depois de recarregar a tela). */
+  loadQueues: (queues: Array<{ conversationId: string; items: QueuedMessage[] }>) => void;
   apply: (event: ChatEvent) => void;
 }
 
@@ -81,6 +83,12 @@ export const useChat = create<ChatState>()((set) => ({
       const pending: Record<string, PermissionRequest[]> = {};
       for (const r of requests) (pending[r.conversationId] ??= []).push(r);
       return { pending };
+    }),
+  loadQueues: (queues) =>
+    set((s) => {
+      const queue = { ...s.queue };
+      for (const q of queues) queue[q.conversationId] = q.items;
+      return { queue };
     }),
   clearQueueError: (conversationId) =>
     set((s) => {

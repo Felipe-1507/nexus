@@ -154,6 +154,9 @@ export function useChatEvents(): void {
     invoke('permissions:pending')
       .then((requests) => useChat.getState().loadPending(requests))
       .catch(() => undefined);
+    invoke('chat:queues')
+      .then((queues) => useChat.getState().loadQueues(queues))
+      .catch(() => undefined);
     return unsubscribe;
   }, [queryClient]);
 }

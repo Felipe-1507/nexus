@@ -4,6 +4,8 @@ import path from 'node:path';
 export type WatchFn = (dir: string, onChange: (paths: string[]) => void) => () => void;
 
 const DEBOUNCE_MS = 150;
+/** Pastas de código gerado que nunca têm notas e podem ter milhares de arquivos (pesam sobretudo em rede). */
+const HEAVY_DIRS = new Set(['node_modules', 'dist', 'out', 'build', '__pycache__']);
 
 /**
  * Observa uma pasta e avisa, agrupado, quais caminhos relativos (com `/`) mudaram. Ignora ocultos (`.obsidian`,
@@ -24,7 +26,7 @@ export function createWatcher(options: { usePolling?: boolean } = {}): WatchFn {
         path
           .relative(root, p)
           .split(path.sep)
-          .some((part) => part.startsWith('.')),
+          .some((part) => part.startsWith('.') || HEAVY_DIRS.has(part.toLowerCase())),
     });
     const record = (p: string) => {
       pending.add(path.relative(root, p).split(path.sep).join('/'));

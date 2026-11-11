@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { tryJunction } from '../../fs/test-junction';
 import { Vault } from './vault';
 
 let base: string;
@@ -77,11 +78,11 @@ describe('segurança', () => {
     expect(() => vault.read('nota.txt')).toThrow(/Só notas/);
   });
 
-  it('não segue junction/link que aponte para fora', () => {
+  it('não segue junction/link que aponte para fora', (ctx) => {
     const outside = path.join(base, 'fora');
     fs.mkdirSync(outside);
     fs.writeFileSync(path.join(outside, 'segredo.md'), 'segredo');
-    fs.symlinkSync(outside, path.join(vault.root, 'atalho'), 'junction');
+    if (!tryJunction(outside, path.join(vault.root, 'atalho'))) ctx.skip();
 
     expect(vault.tree().children).toEqual([]);
     // A varredura rápida do índice (sem conferir o caminho real a cada arquivo) também não entra no link.

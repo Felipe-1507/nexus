@@ -188,6 +188,10 @@ export const ipcContract = {
     input: z.object({ conversationId: z.uuid(), id: z.string() }),
     output: z.array(queuedMessageSchema),
   },
+  'chat:queues': {
+    input: z.undefined(),
+    output: z.array(z.object({ conversationId: z.uuid(), items: z.array(queuedMessageSchema) })),
+  },
   /** Medição de contexto da conversa (dados reais do Claude Code, sem chamar a API) e os limites dos avisos. */
   'context:get': { input: z.object({ conversationId: z.uuid() }), output: contextStateSchema },
   /** Todas as conversas do Workspace com a medição de cada uma (painel geral de sessões). */

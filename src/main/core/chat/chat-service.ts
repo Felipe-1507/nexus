@@ -240,6 +240,13 @@ export class ChatService {
     return this.queued(conversationId);
   }
 
+  /** Todas as filas não vazias (a tela recarregada recompõe a fila a partir daqui). */
+  allQueued(): Array<{ conversationId: string; items: QueuedMessage[] }> {
+    return [...this.queues.keys()]
+      .map((conversationId) => ({ conversationId, items: this.queued(conversationId) }))
+      .filter((q) => q.items.length > 0);
+  }
+
   private queued(conversationId: string): QueuedMessage[] {
     return (this.queues.get(conversationId) ?? []).map((q) => ({
       id: q.id,
