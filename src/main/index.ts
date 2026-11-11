@@ -278,6 +278,8 @@ function bootstrap(): void {
         'app:openPath': (key) => openKnownPath(key, paths, shellOpen),
         'preferences:get': () => ({ theme: prefs.get().theme }),
         'preferences:setTheme': (theme) => ({ theme: prefs.update({ theme }).theme }),
+        'galaxy:getQuality': () => ({ quality: prefs.get().galaxyQuality }),
+        'galaxy:setQuality': (quality) => ({ quality: prefs.update({ galaxyQuality: quality }).galaxyQuality }),
         'appearance:get': () => ({ darkVariant: prefs.get().darkVariant, accent: prefs.get().accent }),
         'appearance:set': (patch) => {
           const next = prefs.update(patch);

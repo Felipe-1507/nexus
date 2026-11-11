@@ -115,6 +115,61 @@ test('galáxia na aba do painel, ao lado do chat: clique seleciona, "Abrir nota"
   }
 });
 
+test('modos Leve e Original: troca nas Configurações vale na hora, sem mexer na seleção nem nos planetas', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Modos');
+    write(ws.knowledgeDir, 'Ideias/Roteiro.md', '# Roteiro\nVer [[Agenda]].\n');
+    write(ws.knowledgeDir, 'Ideias/Agenda.md', '# Agenda\n');
+
+    const panel = page.getByRole('complementary', { name: 'Painel lateral' });
+    await panel.getByRole('tab', { name: 'Galáxia' }).click();
+    const canvas = panel.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '2');
+    // O Leve é o padrão.
+    await expect(canvas).toHaveAttribute('data-quality', 'leve');
+
+    // No Leve, o giro automático fica em no máximo 30 quadros por segundo (com folga para o relógio do teste).
+    const frames = async () => Number((await canvas.getAttribute('data-frames')) ?? '0');
+    await page.waitForTimeout(1500);
+    const before = await frames();
+    await page.waitForTimeout(3000);
+    const drawn = (await frames()) - before;
+    console.log(`modo Leve: ${drawn} quadros em 3 s com o giro automático`);
+    expect(drawn).toBeLessThanOrEqual(3 * 30 + 15);
+
+    const search = panel.getByRole('combobox', { name: 'Buscar nota na galáxia' });
+    await search.fill('roteiro');
+    await search.press('Enter');
+    await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
+
+    // Configurações com a galáxia aberta no painel: a troca vale na hora, sem recriar a cena.
+    const settings = () =>
+      page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('button', { name: 'Configurações' });
+    await settings().click();
+    const modes = page.getByRole('radiogroup', { name: 'Modo da galáxia' });
+    await expect(modes.getByRole('radio', { name: /Leve/ })).toHaveAttribute('aria-checked', 'true');
+    await modes.getByRole('radio', { name: /Original/ }).click();
+    await expect(modes.getByRole('radio', { name: /Original/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(canvas).toHaveAttribute('data-quality', 'original');
+    await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
+    await expect(canvas).toHaveAttribute('data-planets', '2');
+
+    // Fica guardado: depois de recarregar continua no Original; e volta ao Leve sem perder nada.
+    await page.reload();
+    await page.getByTestId('chat-view').waitFor();
+    await panel.getByRole('tab', { name: 'Galáxia' }).click();
+    await expect(canvas).toHaveAttribute('data-quality', 'original');
+    await settings().click();
+    await modes.getByRole('radio', { name: /Leve/ }).click();
+    await expect(canvas).toHaveAttribute('data-quality', 'leve');
+    await expect(canvas).toHaveAttribute('data-planets', '2');
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
 test('planetas: o tamanho acompanha o conteúdo e a aparência pode ser editada e fica guardada', async () => {
   const { app, page, userData } = await launchApp();
   try {

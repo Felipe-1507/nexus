@@ -13,6 +13,8 @@ export const preferencesSchema = z.object({
   darkVariant: z.enum(DARK_VARIANT_IDS).default('padrao'),
   /** Modelos que o usuário já viu (`null`: primeiro uso, ainda não registrado). Serve para avisar de modelo novo. */
   seenModels: z.array(z.string().max(100)).max(500).nullable().default(null),
+  /** Modo de visualização da galáxia (Configurações → Aparência). */
+  galaxyQuality: z.enum(['leve', 'original']).default('leve'),
   /** Cor de destaque escolhida (`null` = a da marca). */
   accent: z
     .string()

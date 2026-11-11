@@ -23,6 +23,7 @@ describe('preferências', () => {
         privacyAcceptedAt: null,
         darkVariant: 'padrao',
         seenModels: null,
+        galaxyQuality: 'leve',
         accent: null,
       },
     });
@@ -36,6 +37,7 @@ describe('preferências', () => {
       privacyAcceptedAt: null,
       darkVariant: 'grafite' as const,
       seenModels: ['opus', 'sonnet'],
+      galaxyQuality: 'original' as const,
       accent: '#4f8cff',
     };
     savePreferences(file, prefs);

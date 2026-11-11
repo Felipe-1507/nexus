@@ -33,6 +33,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GalaxyGraph } from '@shared/knowledge';
 import { hash01, planetColors, type PlanetStyle } from '@shared/planets';
 import type { GalaxyLayout } from './layout';
+import { AmbientClock, ambientFrameDue, ambientInterval, type Animator } from './ambient';
+import type { GalaxyProfile } from './quality';
 import { createPlanetMaterial, createRingMaterial, kindIndex, RING_INNER, RING_OUTER } from './planet-material';
 
 export interface GalaxyCallbacks {
@@ -46,6 +48,8 @@ const BACKGROUND = 0x05050b;
 const ROUTE_OPACITY = 0.16;
 const FLY_MS = 900;
 const CLICK_SLOP_PX = 5;
+/** Quanto o amortecimento da câmera continua agindo depois que o usuário solta. */
+const SETTLE_MS = 2000;
 
 // Halo: um ponto por planeta ou estrela, com tamanho e transparência próprios, apagando do centro para a borda.
 const HALO_VERTEX = /* glsl */ `
@@ -120,6 +124,20 @@ export class GalaxyScene {
   private frame = 0;
   private framed = false;
   private disposed = false;
+  private profile: GalaxyProfile;
+  private stars: Points;
+  private styles: PlanetStyle[] = [];
+  /** Giro automático da câmera (para quando o usuário mexe nela). É movimento ambiente: segue o limite do perfil. */
+  private autoRotate: boolean;
+  /** Animações ambientes das próximas etapas (naves, cometas, pulsos). */
+  private readonly ambient = new AmbientClock();
+  private lastAmbient = -Infinity;
+  /** Usuário mexendo na câmera, e até quando o amortecimento ainda move a câmera depois que ele solta. */
+  private interacting = false;
+  private settleUntil = 0;
+  /** Quadros desenhados (exposto de tempos em tempos para os testes medirem o consumo). */
+  private rendered = 0;
+  private lastStats = 0;
 
   constructor(
     private readonly container: HTMLElement,
@@ -128,10 +146,14 @@ export class GalaxyScene {
       reducedMotion: boolean;
       /** Clique num planeta abre a nota (tela cheia). No painel, o clique só seleciona e leva a câmera até ele. */
       openOnClick: boolean;
+      /** Modo Leve ou Original (quality.ts). Pode ser trocado depois com `setProfile`. */
+      profile: GalaxyProfile;
     },
   ) {
+    this.profile = options.profile;
+    this.autoRotate = !options.reducedMotion;
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.profile.maxPixelRatio));
     this.renderer.setClearColor(BACKGROUND);
     this.renderer.domElement.className = 'absolute inset-0 size-full outline-none';
     container.appendChild(this.renderer.domElement);
@@ -150,7 +172,8 @@ export class GalaxyScene {
     key.position.set(0.4, 1, 0.6);
     this.camera.add(key);
     this.scene.add(this.camera);
-    this.scene.add(this.backgroundStars());
+    this.stars = this.backgroundStars();
+    this.scene.add(this.stars);
     this.scene.add(this.content);
 
     this.haloMaterial = new ShaderMaterial({
@@ -172,10 +195,15 @@ export class GalaxyScene {
     this.controls.dampingFactor = 0.08;
     this.controls.maxDistance = 3000;
     this.controls.minDistance = 2;
-    this.controls.autoRotate = !options.reducedMotion;
+    this.controls.autoRotate = false;
     this.controls.autoRotateSpeed = 0.25;
+    this.controls.addEventListener('end', () => {
+      this.interacting = false;
+      this.settleUntil = performance.now() + SETTLE_MS;
+    });
     this.controls.addEventListener('start', () => {
-      this.controls.autoRotate = false;
+      this.interacting = true;
+      this.autoRotate = false;
       this.fly = null;
     });
 
@@ -187,8 +215,32 @@ export class GalaxyScene {
 
     this.resize = new ResizeObserver(() => this.fit());
     this.resize.observe(container);
+    this.container.dataset.quality = this.profile.quality;
     this.fit();
     this.loop();
+  }
+
+  /**
+   * Troca o modo (Leve ou Original) sem recriar a cena: a câmera, a seleção e a posição dos planetas ficam como estão.
+   */
+  setProfile(profile: GalaxyProfile): void {
+    if (profile.quality === this.profile.quality) return;
+    this.profile = profile;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
+    this.scene.remove(this.stars);
+    this.stars.geometry.dispose();
+    (this.stars.material as Material).dispose();
+    this.stars = this.backgroundStars();
+    this.scene.add(this.stars);
+    if (this.graph.notes.length > 0) this.setData(this.graph, this.layout, this.styles);
+    this.container.dataset.quality = profile.quality;
+    this.fit();
+  }
+
+  /** Registra uma animação ambiente (naves, cometas, pulsos); devolve a função que a remove. */
+  animate(animator: Animator): () => void {
+    this.wake();
+    return this.ambient.add(animator);
   }
 
   /** `styles`: a aparência de cada planeta, na mesma ordem de `graph.notes`. */
@@ -197,6 +249,7 @@ export class GalaxyScene {
     const selectedPath = this.selected === null ? null : this.graph.notes[this.selected]?.path;
     this.graph = graph;
     this.layout = layout;
+    this.styles = styles;
     this.clearContent();
     this.buildSystems();
     this.buildOrbits();
@@ -222,7 +275,7 @@ export class GalaxyScene {
     const p = this.layout.notes[index];
     if (!p) return;
     this.select(index);
-    this.controls.autoRotate = false;
+    this.autoRotate = false;
     const target = new Vector3(p.x, p.y, p.z);
     const offset = this.camera.position.clone().sub(this.controls.target);
     if (offset.lengthSq() < 1e-6) offset.set(0, 0.5, 1);
@@ -254,6 +307,7 @@ export class GalaxyScene {
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.frame);
+    this.ambient.clear();
     this.resize.disconnect();
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('pointermove', this.onPointerMove);
@@ -278,7 +332,7 @@ export class GalaxyScene {
 
   private backgroundStars(): Points {
     const rand = seeded(7);
-    const count = 2500;
+    const count = this.profile.backgroundStars;
     const positions = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       const u = rand() * 2 - 1;
@@ -367,7 +421,8 @@ export class GalaxyScene {
   /** Poeira luminosa em volta de cada sistema: de longe, é ela que faz o conjunto parecer uma galáxia. */
   private nebula(): Points {
     const rand = seeded(11);
-    const per = this.layout.systems.map((s) => Math.min(400, 60 + s.count * 8));
+    const density = this.profile.nebulaDensity;
+    const per = this.layout.systems.map((s) => Math.round(Math.min(400, 60 + s.count * 8) * density));
     const halo = this.haloPoints(per.reduce((a, b) => a + b, 0));
     const color = new Color();
     let k = 0;
@@ -636,10 +691,35 @@ export class GalaxyScene {
       this.controls.target.lerpVectors(this.fly.fromTarget, this.fly.toTarget, k);
       if (t === 1) {
         this.fly = null;
+        this.settleUntil = performance.now() + SETTLE_MS;
         this.container.dataset.flying = 'false';
       }
     }
-    const moved = this.controls.update();
+    // Movimento ambiente (giro automático e animações): no ritmo do perfil, mais lento ou parado sem foco, e nunca
+    // com movimento reduzido. A interação (arrastar, voar até um planeta) continua desenhando em todo quadro.
+    const now = performance.now();
+    const animating = this.autoRotate || this.ambient.size > 0;
+    const interval = animating
+      ? ambientInterval({
+          fps: this.profile.ambientFps,
+          unfocusedFps: this.profile.unfocusedFps,
+          focused: document.hasFocus(),
+          reducedMotion: this.options.reducedMotion,
+        })
+      : null;
+    const ambientDue = ambientFrameDue(now, this.lastAmbient, interval);
+    let dt: number | null = null;
+    if (ambientDue) {
+      dt = Math.min(0.1, (now - this.lastAmbient) / 1000);
+      this.lastAmbient = now;
+      this.ambient.tick(dt, now);
+      if (this.ambient.size > 0) this.dirty = true;
+    }
+    // Com o amortecimento, cada passo do giro se espalha pelos quadros seguintes. Sem interação, a câmera só é
+    // atualizada nos quadros do movimento ambiente; mexendo nela (ou logo depois), em todo quadro.
+    const steering = this.interacting || now < this.settleUntil || this.fly !== null;
+    this.controls.autoRotate = this.autoRotate && ambientDue;
+    const moved = steering || ambientDue ? this.controls.update(dt) : false;
 
     // Parada (câmera quieta, ponteiro no mesmo lugar, nada mudou): não redesenha nem refaz o raycast.
     const pointerKey = this.pointer && !this.down ? `${this.pointer.x},${this.pointer.y}` : '';
@@ -655,6 +735,11 @@ export class GalaxyScene {
     }
     this.updateLabels();
     this.renderer.render(this.scene, this.camera);
+    this.rendered++;
+    if (now - this.lastStats >= 1000) {
+      this.lastStats = now;
+      this.container.dataset.frames = String(this.rendered);
+    }
   };
 
   private project(v: Vector3): { x: number; y: number; visible: boolean } {

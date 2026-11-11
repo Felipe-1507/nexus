@@ -1,7 +1,7 @@
 import { ArrowLeft, FolderOpen, Monitor, Moon, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { BRAND } from '@shared/brand';
-import type { OpenablePath, Theme } from '@shared/ipc-contract';
+import type { GalaxyQuality, OpenablePath, Theme } from '@shared/ipc-contract';
 import { IconButton } from '@renderer/components/ui/IconButton';
 import { useLayout } from '@renderer/app/shell/layout-store';
 import { ClaudeStatusPanel } from '@renderer/features/claude/ClaudeStatusPanel';
@@ -11,7 +11,7 @@ import { AppearanceColors } from './AppearanceColors';
 import { AttachmentsSection } from './AttachmentsSection';
 import { GlobalInstructions } from './GlobalInstructions';
 import { cn } from '@renderer/lib/cn';
-import { useAppInfo, useOpenPath, usePreferences, useSetTheme } from './queries';
+import { useAppInfo, useGalaxyQuality, useOpenPath, usePreferences, useSetGalaxyQuality, useSetTheme } from './queries';
 
 const themes: Array<{ id: Theme; label: string; icon: ReactNode }> = [
   { id: 'system', label: 'Sistema', icon: <Monitor size={16} /> },
@@ -91,7 +91,60 @@ function Appearance() {
         </p>
       )}
       <AppearanceColors />
+      <GalaxyQualityPicker />
     </Section>
+  );
+}
+
+const GALAXY_QUALITIES: Array<{ id: GalaxyQuality; label: string; description: string }> = [
+  {
+    id: 'leve',
+    label: 'Leve',
+    description:
+      'Para o dia a dia: menos partículas e efeitos ao mesmo tempo, movimento a 30 quadros e parado sem foco.',
+  },
+  {
+    id: 'original',
+    label: 'Original',
+    description: 'A experiência completa, com todos os efeitos. Gasta mais placa de vídeo.',
+  },
+];
+
+function GalaxyQualityPicker() {
+  const quality = useGalaxyQuality();
+  const set = useSetGalaxyQuality();
+  const current = set.isPending ? set.variables : quality.data?.quality;
+  return (
+    <div className="mt-6">
+      <p className="text-xs font-medium">Galáxia</p>
+      <p className="mt-0.5 text-xs text-muted">
+        Muda só o quanto é desenhado. Posições, cores e planetas personalizados continuam iguais nos dois modos.
+      </p>
+      <div role="radiogroup" aria-label="Modo da galáxia" className="mt-2 grid grid-cols-2 gap-2">
+        {GALAXY_QUALITIES.map((q) => (
+          <button
+            key={q.id}
+            type="button"
+            role="radio"
+            aria-checked={current === q.id}
+            disabled={!quality.data}
+            onClick={() => set.mutate(q.id)}
+            className={cn(
+              'rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-accent',
+              current === q.id ? 'border-accent bg-accent-soft' : 'border-border hover:bg-surface-2',
+            )}
+          >
+            <span className="block text-sm">{q.label}</span>
+            <span className="mt-0.5 block text-xs leading-5 text-muted">{q.description}</span>
+          </button>
+        ))}
+      </div>
+      {set.isError && (
+        <p role="alert" className="mt-2 text-xs text-danger">
+          Não foi possível salvar o modo da galáxia: {set.error.message}
+        </p>
+      )}
+    </div>
   );
 }
 

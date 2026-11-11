@@ -7,6 +7,8 @@ export const IPC_CHANNELS = [
   'privacy:accept',
   'preferences:get',
   'preferences:setTheme',
+  'galaxy:getQuality',
+  'galaxy:setQuality',
   'appearance:get',
   'appearance:set',
   'workspaces:list',

@@ -11,6 +11,8 @@ import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { cn } from '@renderer/lib/cn';
 import { GalaxyScene } from './galaxy-scene';
 import { layoutGalaxy, searchNotes } from './layout';
+import { DEFAULT_GALAXY_QUALITY, GALAXY_PROFILES } from './quality';
+import { useGalaxyQuality } from '@renderer/features/settings/queries';
 import { PlanetEditor } from './PlanetEditor';
 
 /** `full`: tela principal (clicar num planeta abre a nota). `panel`: aba do painel direito, ao lado do chat. */
@@ -54,6 +56,9 @@ function Galaxy({ workspaceId, mode }: { workspaceId: string; mode: GalaxyMode }
     [graph.data],
   );
   current.current = graph.data ?? null;
+  const profile = GALAXY_PROFILES[useGalaxyQuality().data?.quality ?? DEFAULT_GALAXY_QUALITY];
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
 
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -67,7 +72,7 @@ function Galaxy({ workspaceId, mode }: { workspaceId: string; mode: GalaxyMode }
             if (note) openNote(workspaceId, note.path);
           },
         },
-        { reducedMotion, openOnClick: !panel },
+        { reducedMotion, openOnClick: !panel, profile: profileRef.current },
       );
     } catch (err) {
       setFailure(err instanceof Error ? err.message : String(err));
@@ -77,6 +82,11 @@ function Galaxy({ workspaceId, mode }: { workspaceId: string; mode: GalaxyMode }
       scene.current = null;
     };
   }, [openNote, workspaceId, panel]);
+
+  // Trocar de modo nas Configurações vale na hora, sem recriar a cena (a câmera e a seleção ficam onde estão).
+  useEffect(() => {
+    scene.current?.setProfile(profile);
+  }, [profile]);
 
   useEffect(() => {
     if (graph.data && layout && styles) scene.current?.setData(graph.data, layout, styles);
