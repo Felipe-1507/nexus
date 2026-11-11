@@ -479,3 +479,36 @@ test('luas: anexos incorporados orbitam o planeta e aparecem no cartão; anexo q
     removeUserData(userData);
   }
 });
+
+test('busca visual: notas encontradas acendem, o resto apaga, #tag filtra e "Enquadrar" mostra todas', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Busca');
+    write(ws.knowledgeDir, 'Fiscal/ST.md', '# ST\n#fiscal #urgente\n');
+    write(ws.knowledgeDir, 'Fiscal/CEST.md', '# CEST\n#fiscal\n');
+    write(ws.knowledgeDir, 'Contas/Fechamento.md', '# Fechamento\n#urgente\n');
+    write(ws.knowledgeDir, 'Ideias.md', '# Ideias\n');
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '4');
+    const search = page.getByRole('combobox', { name: 'Buscar nota na galáxia' });
+    await search.fill('#fiscal');
+    await expect(canvas).toHaveAttribute('data-search-matches', '2');
+    await expect(page.getByTestId('search-count')).toHaveText('2 notas acesas na galáxia');
+    await search.fill('#urgente fe');
+    await expect(canvas).toHaveAttribute('data-search-matches', '1');
+    await search.fill('#urgente');
+    await page.getByRole('button', { name: 'Enquadrar' }).click();
+    await expect(canvas).toHaveAttribute('data-flying', 'false', { timeout: 5000 });
+    await expect(canvas).toHaveAttribute('data-search-matches', '2');
+    // Nota alterada com a busca aberta: a cena é refeita e a busca continua valendo.
+    write(ws.knowledgeDir, 'Contas/Fechamento.md', '# Fechamento\n#urgente\nMais texto.\n');
+    await page.waitForTimeout(1500);
+    await expect(canvas).toHaveAttribute('data-search-matches', '2');
+    await search.press('Escape');
+    await expect(canvas).toHaveAttribute('data-search-matches', '');
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});

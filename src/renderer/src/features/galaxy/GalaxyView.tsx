@@ -1,4 +1,4 @@
-import { FileText, FolderOpen, Orbit, Palette, Paperclip, Search } from 'lucide-react';
+import { FileText, FolderOpen, Focus, Orbit, Palette, Paperclip, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '@shared/brand';
 import { CHAT_EVENT_CHANNEL, type ChatEvent } from '@shared/chat';
@@ -12,7 +12,7 @@ import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { cn } from '@renderer/lib/cn';
 import { invoke } from '@renderer/lib/ipc';
 import { GalaxyScene } from './galaxy-scene';
-import { layoutGalaxy, noteInVault, searchNotes } from './layout';
+import { layoutGalaxy, matchNotes, noteInVault, searchNotes } from './layout';
 import { DEFAULT_GALAXY_QUALITY, GALAXY_PROFILES } from './quality';
 import { useGalaxyQuality } from '@renderer/features/settings/queries';
 import { PlanetEditor } from './PlanetEditor';
@@ -155,7 +155,13 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
 
       {data && data.notes.length > 0 && (
         <>
-          <SearchBox graph={data} onPick={(i) => scene.current?.focus(i)} panel={panel} />
+          <SearchBox
+            graph={data}
+            onPick={(i) => scene.current?.focus(i)}
+            onSearch={(m) => scene.current?.setSearch(m)}
+            onFrame={(m) => scene.current?.frameNotes(m)}
+            panel={panel}
+          />
           <p
             className={cn(
               'pointer-events-none absolute text-xs text-white/50',
@@ -283,11 +289,34 @@ function Notice({ title, description }: { title: string; description: string }) 
   );
 }
 
-function SearchBox({ graph, onPick, panel }: { graph: GalaxyGraph; onPick: (index: number) => void; panel: boolean }) {
+/**
+ * Busca da galáxia (G8): enquanto digita, as notas encontradas acendem na galáxia e o resto apaga. Aceita `#tag`. A
+ * lista mostra as primeiras; "Enquadrar" leva a câmera a mostrar todas.
+ */
+function SearchBox({
+  graph,
+  onPick,
+  onSearch,
+  onFrame,
+  panel,
+}: {
+  graph: GalaxyGraph;
+  onPick: (index: number) => void;
+  onSearch: (matches: number[] | null) => void;
+  onFrame: (matches: number[]) => void;
+  panel: boolean;
+}) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const results = useMemo(() => searchNotes(graph, query), [graph, query]);
+  const matches = useMemo(() => matchNotes(graph, query), [graph, query]);
   const open = query.trim().length > 0;
+  const searchRef = useRef(onSearch);
+  searchRef.current = onSearch;
+  useEffect(() => {
+    searchRef.current(open ? matches : null);
+  }, [open, matches]);
+  useEffect(() => () => searchRef.current(null), []);
 
   function pick(i: number) {
     onPick(i);
@@ -304,7 +333,7 @@ function SearchBox({ graph, onPick, panel }: { graph: GalaxyGraph; onPick: (inde
           aria-label="Buscar nota na galáxia"
           aria-expanded={open}
           aria-controls="galaxy-results"
-          placeholder="Buscar nota…"
+          placeholder="Buscar nota ou #tag…"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -328,7 +357,7 @@ function SearchBox({ graph, onPick, panel }: { graph: GalaxyGraph; onPick: (inde
           aria-label="Notas encontradas"
           className="mt-1 overflow-hidden rounded-xl border border-white/10 bg-black/75 py-1 backdrop-blur"
         >
-          {results.length === 0 && <li className="px-3 py-2 text-xs text-white/50">Nenhuma nota com esse nome.</li>}
+          {results.length === 0 && <li className="px-3 py-2 text-xs text-white/50">Nenhuma nota encontrada.</li>}
           {results.map((i, k) => (
             <li
               key={graph.notes[i]!.path}
@@ -346,6 +375,21 @@ function SearchBox({ graph, onPick, panel }: { graph: GalaxyGraph; onPick: (inde
             </li>
           ))}
         </ul>
+      )}
+      {open && matches.length > 0 && (
+        <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-3 py-1.5 text-xs text-white/60 backdrop-blur">
+          <span className="min-w-0 flex-1" data-testid="search-count">
+            {matches.length === 1 ? '1 nota acesa na galáxia' : `${matches.length} notas acesas na galáxia`}
+          </span>
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-1 text-white/80 hover:text-white"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onFrame(matches)}
+          >
+            <Focus size={12} /> Enquadrar
+          </button>
+        </div>
       )}
     </div>
   );

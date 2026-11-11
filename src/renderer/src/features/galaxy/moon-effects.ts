@@ -103,7 +103,9 @@ const MOON_VERTEX = /* glsl */ `
   attribute vec3 aCenter;
   attribute vec4 aOrbit; // x: raio, y: fase, z: velocidade, w: inclinação
   attribute vec4 aLook;  // rgb: cor, a: tamanho
+  attribute float aDim;  // 1 = planeta fora da busca
   uniform float uTime;
+  varying float vDim;
   varying vec3 vN;
   varying vec3 vObj;
   varying vec3 vC;
@@ -114,6 +116,7 @@ const MOON_VERTEX = /* glsl */ `
     vec3 center = aCenter + vec3(x, z * sin(aOrbit.w), z * cos(aOrbit.w));
     vObj = position;
     vC = aLook.rgb;
+    vDim = aDim;
     vN = normalize(mat3(modelViewMatrix) * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(center + position * aLook.a, 1.0);
   }
@@ -124,6 +127,7 @@ const MOON_FRAGMENT = /* glsl */ `
   varying vec3 vN;
   varying vec3 vObj;
   varying vec3 vC;
+  varying float vDim;
   uniform float uRim;
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
@@ -140,6 +144,7 @@ const MOON_FRAGMENT = /* glsl */ `
     float diff = max(dot(N, L), 0.0);
     float rim = pow(1.0 - abs(N.z), 2.2);
     vec3 outc = col * (0.32 + 0.9 * diff) + vC * rim * (0.25 + 0.35 * uRim);
+    outc *= 1.0 - 0.85 * vDim;
     gl_FragColor = vec4(outc, 1.0);
     #include <colorspace_fragment>
   }
@@ -168,6 +173,7 @@ export function createMoons(
   geometry.setAttribute('aCenter', new InstancedBufferAttribute(centers, 3));
   geometry.setAttribute('aOrbit', new InstancedBufferAttribute(orbits, 4));
   geometry.setAttribute('aLook', new InstancedBufferAttribute(looks, 4));
+  geometry.setAttribute('aDim', new InstancedBufferAttribute(new Float32Array(plans.length), 1));
   const material = new ShaderMaterial({
     vertexShader: MOON_VERTEX,
     fragmentShader: MOON_FRAGMENT,

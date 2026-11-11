@@ -139,6 +139,11 @@ export class GalaxyScene {
   /** Luas de anexos da cena atual (G7) e a que está sob o ponteiro. */
   private moons: MoonPlan[] = [];
   private hoveredMoon: number | null = null;
+  private moonMesh: InstancedMesh | null = null;
+  /** Busca visual (G8): notas encontradas (null = sem busca) e o que é preciso para acender e apagar sem refazer a cena. */
+  private search: Set<number> | null = null;
+  private planetHalo: { halo: ReturnType<typeof haloBuffer>; alphas: Float32Array; sizes: Float32Array } | null = null;
+  private routeColors: { attribute: BufferAttribute; base: Float32Array } | null = null;
   /** Giro automático da câmera (para quando o usuário mexe nela). É movimento ambiente: segue o limite do perfil. */
   private autoRotate: boolean;
   /** Animações ambientes das próximas etapas (naves, cometas, pulsos). */
@@ -324,6 +329,13 @@ export class GalaxyScene {
     this.buildMoons();
     this.buildRoutes();
     this.buildEffects();
+    if (this.search) {
+      // A cena foi refeita (nota alterada): a busca continua valendo para as notas que ainda existem.
+      const paths = new Set([...this.search].map((i) => this.previousPaths[i]).filter(Boolean));
+      this.search = new Set(graph.notes.flatMap((n, i) => (paths.has(n.path) ? [i] : [])));
+    }
+    this.previousPaths = graph.notes.map((n) => n.path);
+    this.applySearch();
     const keep = selectedPath ? graph.notes.findIndex((n) => n.path === selectedPath) : -1;
     this.selected = keep >= 0 ? keep : null;
     this.hovered = null;
@@ -339,17 +351,40 @@ export class GalaxyScene {
     this.container.dataset.ready = 'true';
   }
 
-  /** Seleciona o planeta e leva a câmera até ele. */
-  focus(index: number): void {
+  /**
+   * Busca visual: acende as notas encontradas e apaga o resto (planetas, halos, luas e rotas), sem refazer a cena.
+   * `null` volta tudo ao normal.
+   */
+  setSearch(matches: number[] | null): void {
+    this.search = matches ? new Set(matches) : null;
+    this.applySearch();
     this.wake();
-    const p = this.layout.notes[index];
-    if (!p) return;
-    this.select(index);
+  }
+
+  /** Leva a câmera a enquadrar estas notas (os resultados da busca). */
+  frameNotes(indices: number[]): void {
+    const points = indices.map((i) => this.layout.notes[i]).filter((p) => p !== undefined);
+    if (points.length === 0) return;
+    if (points.length === 1) {
+      this.focus(indices[0]!);
+      return;
+    }
+    this.wake();
     this.autoRotate = false;
-    const target = new Vector3(p.x, p.y, p.z);
+    const center = new Vector3();
+    for (const p of points) center.add(new Vector3(p.x, p.y, p.z));
+    center.divideScalar(points.length);
+    let radius = 6;
+    for (const p of points) radius = Math.max(radius, center.distanceTo(new Vector3(p.x, p.y, p.z)) + p.size * 3);
+    const vFov = (this.camera.fov * Math.PI) / 180;
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
+    const distance = (radius / Math.sin(Math.min(vFov, hFov) / 2)) * 1.05;
     const offset = this.camera.position.clone().sub(this.controls.target);
     if (offset.lengthSq() < 1e-6) offset.set(0, 0.5, 1);
-    const to = target.clone().add(offset.normalize().multiplyScalar(Math.max(10, p.size * 14)));
+    this.flyTo(center.clone().add(offset.normalize().multiplyScalar(distance)), center);
+  }
+
+  private flyTo(to: Vector3, target: Vector3): void {
     if (this.options.reducedMotion) {
       this.camera.position.copy(to);
       this.controls.target.copy(target);
@@ -364,6 +399,57 @@ export class GalaxyScene {
       t0: performance.now(),
     };
     this.container.dataset.flying = 'true';
+  }
+
+  private previousPaths: string[] = [];
+
+  private applySearch(): void {
+    const found = this.search;
+    const n = this.graph.notes.length;
+    const state = (i: number) => (found === null ? 0 : found.has(i) ? 2 : 1);
+    const match = this.planets?.geometry.getAttribute('aMatch') as InstancedBufferAttribute | undefined;
+    if (match) {
+      for (let i = 0; i < n; i++) match.array[i] = state(i);
+      match.needsUpdate = true;
+    }
+    if (this.planetHalo) {
+      const { halo, alphas, sizes } = this.planetHalo;
+      for (let i = 0; i < n; i++) {
+        const st = state(i);
+        halo.alphas[i] = st === 1 ? alphas[i]! * 0.12 : st === 2 ? Math.max(alphas[i]!, 0.55) : alphas[i]!;
+        halo.sizes[i] = st === 2 ? sizes[i]! * 1.5 : sizes[i]!;
+      }
+      halo.touch();
+    }
+    const dim = this.moonMesh?.geometry.getAttribute('aDim') as InstancedBufferAttribute | undefined;
+    if (dim) {
+      this.moons.forEach((m, k) => (dim.array[k] = state(m.note) === 1 ? 1 : 0));
+      dim.needsUpdate = true;
+    }
+    if (this.routeColors) {
+      const { attribute, base } = this.routeColors;
+      const out = attribute.array as Float32Array;
+      this.graph.links.forEach(([a, b], r) => {
+        const both = found !== null && found.has(a) && found.has(b);
+        const k = found === null ? 1 : both ? 2.5 : 0.12;
+        for (let j = 0; j < 6; j++) out[r * 6 + j] = base[r * 6 + j]! * k;
+      });
+      attribute.needsUpdate = true;
+    }
+    this.container.dataset.searchMatches = found === null ? '' : String(found.size);
+  }
+
+  /** Seleciona o planeta e leva a câmera até ele. */
+  focus(index: number): void {
+    this.wake();
+    const p = this.layout.notes[index];
+    if (!p) return;
+    this.select(index);
+    this.autoRotate = false;
+    const target = new Vector3(p.x, p.y, p.z);
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    if (offset.lengthSq() < 1e-6) offset.set(0, 0.5, 1);
+    this.flyTo(target.clone().add(offset.normalize().multiplyScalar(Math.max(10, p.size * 14))), target);
   }
 
   select(index: number | null): void {
@@ -598,11 +684,13 @@ export class GalaxyScene {
     const params = new Float32Array(n * 4);
     const atmo = new Float32Array(n * 4);
     const glow = new Float32Array(n);
+    const match = new Float32Array(n);
     geometry.setAttribute('aColorA', new InstancedBufferAttribute(colorA, 3));
     geometry.setAttribute('aColorB', new InstancedBufferAttribute(colorB, 3));
     geometry.setAttribute('aParams', new InstancedBufferAttribute(params, 4));
     geometry.setAttribute('aAtmo', new InstancedBufferAttribute(atmo, 4));
     geometry.setAttribute('aGlow', new InstancedBufferAttribute(glow, 1));
+    geometry.setAttribute('aMatch', new InstancedBufferAttribute(match, 1));
 
     const mesh = new InstancedMesh(geometry, createPlanetMaterial(this.time, this.rim), Math.max(1, n));
     mesh.count = n;
@@ -642,6 +730,7 @@ export class GalaxyScene {
     });
     mesh.computeBoundingSphere();
     this.planets = mesh;
+    this.planetHalo = { halo, alphas: halo.alphas.slice(), sizes: halo.sizes.slice() };
     this.content.add(mesh, halo.points);
     if (rings.length > 0) this.content.add(this.buildRings(rings, styles));
   }
@@ -650,6 +739,7 @@ export class GalaxyScene {
   private buildMoons(): void {
     this.moons = planMoons(this.graph, this.layout, this.profile);
     const mesh = createMoons(this.moons, this.layout, this.time, this.rim);
+    this.moonMesh = mesh;
     if (mesh) this.content.add(mesh);
     this.container.dataset.moons = String(this.moons.length);
   }
@@ -699,7 +789,9 @@ export class GalaxyScene {
     });
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new BufferAttribute(colors, 3));
+    const colorAttribute = new BufferAttribute(colors, 3);
+    geometry.setAttribute('color', colorAttribute);
+    this.routeColors = { attribute: colorAttribute, base: colors.slice() };
     const material = new LineBasicMaterial({
       vertexColors: true,
       transparent: true,
@@ -728,6 +820,9 @@ export class GalaxyScene {
     this.systemLabels = [];
     this.planets = null;
     this.moons = [];
+    this.moonMesh = null;
+    this.planetHalo = null;
+    this.routeColors = null;
   }
 
   private updateHighlight(): void {

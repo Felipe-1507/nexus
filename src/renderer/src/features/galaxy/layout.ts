@@ -214,15 +214,43 @@ const normalize = (text: string) =>
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase();
 
-/** Busca por título ou caminho, sem diferenciar acentos nem maiúsculas. Títulos que começam com o termo vêm antes. */
-export function searchNotes(graph: GalaxyGraph, query: string, limit = 8): number[] {
-  const q = normalize(query.trim());
-  if (!q) return [];
-  const scored: Array<{ i: number; score: number }> = [];
+/**
+ * Termos da busca: palavras (procuradas juntas no título ou no caminho, que inclui o sistema) e `#tags` (a nota precisa
+ * ter cada uma; `#fiscal` também acha `#fiscal/st`). Sem acentos e sem diferenciar maiúsculas.
+ */
+export function parseQuery(query: string): { text: string; tags: string[] } {
+  const tags: string[] = [];
+  const words: string[] = [];
+  for (const token of normalize(query).split(/\s+/).filter(Boolean)) {
+    if (token.startsWith('#')) {
+      if (token.length > 1) tags.push(token.slice(1));
+    } else words.push(token);
+  }
+  return { text: words.join(' '), tags };
+}
+
+/** Todas as notas que atendem a busca (a galáxia acende todas, a lista mostra só as primeiras). */
+export function matchNotes(graph: GalaxyGraph, query: string): number[] {
+  const { text, tags } = parseQuery(query);
+  if (!text && tags.length === 0) return [];
+  const out: number[] = [];
   graph.notes.forEach((n, i) => {
-    const title = normalize(n.title);
-    const score = title.startsWith(q) ? 0 : title.includes(q) ? 1 : normalize(n.path).includes(q) ? 2 : -1;
-    if (score >= 0) scored.push({ i, score });
+    if (text && !normalize(n.title).includes(text) && !normalize(n.path).includes(text)) return;
+    if (tags.length > 0) {
+      const own = n.tags.map(normalize);
+      if (!tags.every((t) => own.some((o) => o === t || o.startsWith(`${t}/`)))) return;
+    }
+    out.push(i);
+  });
+  return out;
+}
+
+/** Busca por título, caminho ou #tag, sem diferenciar acentos nem maiúsculas. Títulos que começam com o termo vêm antes. */
+export function searchNotes(graph: GalaxyGraph, query: string, limit = 8): number[] {
+  const { text } = parseQuery(query);
+  const scored = matchNotes(graph, query).map((i) => {
+    const title = normalize(graph.notes[i]!.title);
+    return { i, score: !text ? 0 : title.startsWith(text) ? 0 : title.includes(text) ? 1 : 2 };
   });
   scored.sort((a, b) => a.score - b.score || graph.notes[a.i]!.title.localeCompare(graph.notes[b.i]!.title, 'pt-BR'));
   return scored.slice(0, limit).map((s) => s.i);

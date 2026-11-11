@@ -16,6 +16,7 @@ const PLANET_VERTEX = /* glsl */ `
   attribute vec4 aParams; // x: tipo, y: semente, z: força das faixas, w: escala do ruído
   attribute vec4 aAtmo;   // rgb: cor do brilho, a: força da atmosfera (0 = sem)
   attribute float aGlow;  // 0 a 1: nota mexida recentemente
+  attribute float aMatch; // busca: 0 = normal, 1 = fora da busca (apagado), 2 = encontrado (aceso)
   uniform float uTime;
   varying vec3 vObj;
   varying vec3 vN;
@@ -25,7 +26,9 @@ const PLANET_VERTEX = /* glsl */ `
   varying vec4 vP;
   varying vec4 vAt;
   varying float vGlow;
+  varying float vMatch;
   void main() {
+    vMatch = aMatch;
     // Rotação: a superfície gira em volta do eixo do planeta (a luz fica parada), cada um no seu ritmo e sentido.
     float speed = (0.05 + 0.1 * fract(aParams.y * 0.0137)) * (fract(aParams.y * 0.071) < 0.2 ? -1.0 : 1.0);
     float ang = uTime * speed;
@@ -50,6 +53,7 @@ const PLANET_FRAGMENT = /* glsl */ `
   varying vec4 vP;
   varying vec4 vAt;
   varying float vGlow;
+  varying float vMatch;
   uniform float uRim;
 
   float hash(vec3 p) {
@@ -139,6 +143,11 @@ const PLANET_FRAGMENT = /* glsl */ `
     // Fresnel discreto em todos os planetas: a borda iluminada destaca o volume contra o fundo escuro.
     outc += mix(col, vec3(0.75, 0.85, 1.0), 0.5) * rim * uRim * 0.35 * (0.3 + 0.7 * diff);
     outc += col * 0.35 * vGlow;                            // nota recente
+    // Busca: o que ficou de fora vira silhueta escura; o que foi encontrado ganha brilho e borda clara.
+    float dimmed = step(0.5, vMatch) * (1.0 - step(1.5, vMatch));
+    float found = step(1.5, vMatch);
+    outc = mix(outc, outc * 0.12, dimmed);
+    outc += (col * 0.25 + vec3(0.9, 0.95, 1.0) * rim * 0.9) * found;
     gl_FragColor = vec4(outc, 1.0);
     #include <colorspace_fragment>
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GalaxyGraph } from '@shared/knowledge';
-import { footprint, layoutGalaxy, recencyGlow, searchNotes } from './layout';
+import { footprint, layoutGalaxy, matchNotes, parseQuery, recencyGlow, searchNotes } from './layout';
 import { planetSize } from '@shared/planets';
 
 const DAY = 86_400_000;
@@ -94,5 +94,26 @@ describe('busca na galáxia', () => {
     expect(searchNotes(g, 'CONCILIACAO')).toEqual([0, 1]);
     expect(searchNotes(g, 'pessoal')).toEqual([2]);
     expect(searchNotes(g, '   ')).toEqual([]);
+  });
+});
+
+describe('busca visual', () => {
+  const g = graph(['Fiscal/ST.md', 'Fiscal/CEST.md', 'Trabalho/Fechamento.md', 'Ideias.md']);
+  g.notes[0]!.tags = ['fiscal/st', 'urgente'];
+  g.notes[1]!.tags = ['Fiscal'];
+  g.notes[2]!.tags = ['urgente'];
+
+  it('separa palavras e #tags', () => {
+    expect(parseQuery('  #Fiscal  cest #  ')).toEqual({ text: 'cest', tags: ['fiscal'] });
+  });
+
+  it('acende todas as notas que atendem: #tag (com subtags), palavras e as duas juntas', () => {
+    expect(matchNotes(g, '#fiscal')).toEqual([0, 1]);
+    expect(matchNotes(g, '#urgente')).toEqual([0, 2]);
+    expect(matchNotes(g, '#urgente #fiscal')).toEqual([0]);
+    expect(matchNotes(g, 'fiscal')).toEqual([0, 1]);
+    expect(matchNotes(g, 'fe #urgente')).toEqual([2]);
+    expect(matchNotes(g, '#')).toEqual([]);
+    expect(searchNotes(g, '#fiscal')).toEqual([1, 0]);
   });
 });
