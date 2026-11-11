@@ -11,6 +11,7 @@ import {
   type Object3D,
 } from 'three';
 import type { Animator } from './ambient';
+import type { GalaxyLayout } from './layout';
 import type { GalaxyProfile } from './quality';
 
 /**
@@ -21,6 +22,8 @@ import type { GalaxyProfile } from './quality';
 export interface Effect {
   objects: Object3D[];
   animator: Animator;
+  /** Efeitos que sobrevivem à cena ser refeita (ex.: as naves) recebem o layout novo por aqui. */
+  setLayout?: (layout: GalaxyLayout) => void;
 }
 
 /** Sorteio com semente (mesma sequência a cada abertura). */
@@ -43,8 +46,9 @@ export function haloBuffer(count: number, material: ShaderMaterial) {
   const position = new BufferAttribute(positions, 3);
   const alpha = new BufferAttribute(alphas, 1);
   const size = new BufferAttribute(sizes, 1);
+  const color = new BufferAttribute(colors, 3);
   geometry.setAttribute('position', position);
-  geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  geometry.setAttribute('color', color);
   geometry.setAttribute('size', size);
   geometry.setAttribute('alpha', alpha);
   const points = new Points(geometry, material);
@@ -64,6 +68,7 @@ export function haloBuffer(count: number, material: ShaderMaterial) {
       position.needsUpdate = true;
       alpha.needsUpdate = true;
       size.needsUpdate = true;
+      color.needsUpdate = true;
     },
   };
 }

@@ -86,7 +86,9 @@ export function createShips(
 ): Effect | null {
   const count = profile.limits.ambientShips;
   if (count === 0 || layout.systems.length === 0) return null;
-  const radius = galaxyRadius(layout);
+  // A galáxia pode mudar (nota nova): as naves continuam onde estão e passam a usar o layout novo.
+  let current = layout;
+  let radius = galaxyRadius(layout);
 
   const geometry = new ConeGeometry(0.32, 1.3, 6);
   geometry.rotateX(Math.PI / 2); // a ponta passa a apontar para +Z (a frente da nave)
@@ -99,7 +101,7 @@ export function createShips(
   const hullColors = ['#e8eeff', '#ffe9c7', '#d9fff1', '#f3dcff'];
 
   const ships: Ship[] = Array.from({ length: count }, (_, i) => {
-    const start = planShipTarget(layout, rand, radius).point;
+    const start = planShipTarget(current, rand, radius).point;
     hulls.setColorAt(i, tint.set(hullColors[i % hullColors.length]!));
     for (let k = 0; k < TRAIL; k++) halo.set(i * TRAIL + k, start, engine, 2.2 * (1 - k / TRAIL) + 0.6, 0);
     const ship: Ship = {
@@ -120,7 +122,7 @@ export function createShips(
 
   /** Parte do ponto atual para um destino novo, em curva. */
   function travel(ship: Ship): void {
-    ship.target = planShipTarget(layout, rand, radius);
+    ship.target = planShipTarget(current, rand, radius);
     ship.from.copy(ship.pos);
     const to = ship.target.point;
     const dist = ship.from.distanceTo(to);
@@ -202,5 +204,12 @@ export function createShips(
       return true;
     },
   };
-  return { objects: [hulls, halo.points], animator };
+  return {
+    objects: [hulls, halo.points],
+    animator,
+    setLayout(next) {
+      current = next;
+      radius = galaxyRadius(next);
+    },
+  };
 }

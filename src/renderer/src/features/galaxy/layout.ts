@@ -194,6 +194,20 @@ export function layoutGalaxy(
   return { systems, orbits, notes };
 }
 
+/**
+ * Caminho da nota relativo ao vault (com `/`), se o arquivo for uma nota dentro dele; senão `null`. Compara sem
+ * diferenciar maiúsculas e barras, como o Windows.
+ */
+export function noteInVault(vault: string, file: string): string | null {
+  const clean = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
+  const root = clean(vault);
+  const target = clean(file);
+  if (!/\.md$/i.test(target) || target.length <= root.length + 1) return null;
+  if (target.slice(0, root.length).toLowerCase() !== root.toLowerCase() || target[root.length] !== '/') return null;
+  const rel = target.slice(root.length + 1);
+  return rel.split('/').some((part) => part === '..' || part === '') ? null : rel;
+}
+
 const normalize = (text: string) =>
   text
     .normalize('NFD')

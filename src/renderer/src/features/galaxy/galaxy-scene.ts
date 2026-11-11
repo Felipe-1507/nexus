@@ -34,7 +34,8 @@ import type { GalaxyGraph } from '@shared/knowledge';
 import { hash01, planetColors, type PlanetStyle } from '@shared/planets';
 import type { GalaxyLayout } from './layout';
 import { createComets, createFlows } from './route-effects';
-import { createShips } from './ship-effects';
+import { createShips, galaxyRadius } from './ship-effects';
+import { ActivityLayer, type Spot } from './activity-effects';
 import { createNebulaMaterial, createShootingStars, haloBuffer, seeded, shaderClock, type Effect } from './effects';
 import { AmbientClock, ambientFrameDue, ambientInterval, type Animator } from './ambient';
 import type { GalaxyProfile } from './quality';
@@ -125,6 +126,12 @@ export class GalaxyScene {
   private readonly rim: { value: number };
   /** Animações dos efeitos da cena atual (saem do relógio quando a cena é refeita). */
   private effectRemovers: Array<() => void> = [];
+  /** Efeitos que sobrevivem à cena ser refeita (naves ambientais, estrelas cadentes), por modo. */
+  private persistent: { quality: string; effects: Effect[]; removers: Array<() => void> } | null = null;
+  /** Naves do Claude e pulsos das notas alteradas (G5). */
+  private readonly activity: ActivityLayer | null;
+  /** Nota (caminho em minúsculas) → índice no grafo atual. */
+  private pathIndex = new Map<string, number>();
   private styles: PlanetStyle[] = [];
   /** Giro automático da câmera (para quando o usuário mexe nela). É movimento ambiente: segue o limite do perfil. */
   private autoRotate: boolean;
@@ -213,6 +220,19 @@ export class GalaxyScene {
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointerup', this.onPointerUp);
 
+    this.activity = options.reducedMotion
+      ? null
+      : new ActivityLayer({
+          material: this.haloMaterial,
+          profile: () => this.profile,
+          locate: (p) => this.locate(p),
+          locateSystem: (p) => this.locateSystem(p),
+          radius: () => galaxyRadius(this.layout),
+          rand: seeded(31),
+          start: (a) => this.animate(a),
+        });
+    if (this.activity) this.scene.add(...this.activity.objects);
+
     this.resize = new ResizeObserver(() => this.fit());
     this.resize.observe(container);
     this.container.dataset.quality = this.profile.quality;
@@ -240,6 +260,43 @@ export class GalaxyScene {
     this.fit();
   }
 
+  /** O Claude começou a criar ou editar uma nota (caminho relativo ao vault): uma nave vai até ela. */
+  claudeEdit(path: string): void {
+    if (!this.activity || !this.visible()) return;
+    this.activity.claudeEdit(path);
+    this.publishActivity();
+  }
+
+  /** Notas alteradas no disco (pelo Claude, pelo editor ou por outro programa): pulso no planeta. */
+  notesChanged(paths: string[]): void {
+    if (!this.activity || !this.visible() || paths.length === 0) return;
+    this.activity.notesChanged(paths.map((path) => ({ path, existed: this.pathIndex.has(path.toLowerCase()) })));
+    this.publishActivity();
+  }
+
+  private visible(): boolean {
+    return !document.hidden && this.container.clientWidth > 0 && this.container.clientHeight > 0;
+  }
+
+  private publishActivity(): void {
+    if (!this.activity) return;
+    this.container.dataset.activityShips = String(this.activity.stats.ships);
+    this.container.dataset.pulses = String(this.activity.stats.pulses);
+    this.container.dataset.grouped = String(this.activity.stats.grouped);
+  }
+
+  private locate(path: string): Spot | null {
+    const i = this.pathIndex.get(path.toLowerCase());
+    const p = i === undefined ? undefined : this.layout.notes[i];
+    return p ? { x: p.x, y: p.y, z: p.z, size: p.size } : null;
+  }
+
+  private locateSystem(path: string): Spot | null {
+    const name = path.includes('/') ? path.slice(0, path.indexOf('/')) : '';
+    const s = this.layout.systems.find((x) => x.name.toLowerCase() === name.toLowerCase());
+    return s ? { x: s.x, y: s.y, z: s.z, size: 1.3 + 0.15 * Math.sqrt(s.count) } : null;
+  }
+
   /** Registra uma animação ambiente (naves, cometas, pulsos); devolve a função que a remove. */
   animate(animator: Animator): () => void {
     this.wake();
@@ -253,6 +310,7 @@ export class GalaxyScene {
     this.graph = graph;
     this.layout = layout;
     this.styles = styles;
+    this.pathIndex = new Map(graph.notes.map((n, i) => [n.path.toLowerCase(), i]));
     this.clearContent();
     this.buildSystems();
     this.buildOrbits();
@@ -311,6 +369,8 @@ export class GalaxyScene {
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.frame);
+    this.activity?.dispose();
+    this.dropPersistent();
     this.ambient.clear();
     this.resize.disconnect();
     const canvas = this.renderer.domElement;
@@ -378,20 +438,16 @@ export class GalaxyScene {
   /** Movimento ambiente da cena atual (nada, com movimento reduzido ou sem notas). */
   private buildEffects(): void {
     if (this.options.reducedMotion || this.graph.notes.length === 0) {
+      this.dropPersistent();
       this.container.dataset.ambient = 'off';
       return;
     }
-    const effects: Effect[] = [
-      { objects: [], animator: shaderClock(this.time) },
-      createShootingStars(() => this.profile, seeded(17)),
-    ];
+    this.buildPersistent();
+    const effects: Effect[] = [{ objects: [], animator: shaderClock(this.time) }];
     const flows = createFlows(this.graph, this.layout, this.profile, this.haloMaterial);
     const comets = createComets(this.graph, this.layout, () => this.profile, this.haloMaterial, seeded(23));
     if (flows) effects.push(flows);
     if (comets) effects.push(comets);
-    const ships = createShips(this.layout, this.profile, this.haloMaterial, seeded(29));
-    if (ships) effects.push(ships);
-    this.container.dataset.ships = String(ships ? this.profile.limits.ambientShips : 0);
     this.container.dataset.flows = String(
       flows ? Math.min(this.graph.links.length, this.profile.limits.flowingRoutes) : 0,
     );
@@ -401,6 +457,41 @@ export class GalaxyScene {
       this.effectRemovers.push(this.ambient.add(e.animator));
     }
     this.container.dataset.ambient = 'on';
+  }
+
+  /**
+   * Naves ambientais e estrelas cadentes não recomeçam quando uma nota muda (a cena é refeita a cada alteração): só
+   * recebem o layout novo. Trocar de modo recria as duas.
+   */
+  private buildPersistent(): void {
+    if (this.persistent?.quality === this.profile.quality) {
+      for (const e of this.persistent.effects) e.setLayout?.(this.layout);
+      return;
+    }
+    this.dropPersistent();
+    const effects: Effect[] = [createShootingStars(() => this.profile, seeded(17))];
+    const ships = createShips(this.layout, this.profile, this.haloMaterial, seeded(29));
+    if (ships) effects.push(ships);
+    this.container.dataset.ships = String(ships ? this.profile.limits.ambientShips : 0);
+    const removers: Array<() => void> = [];
+    for (const e of effects) {
+      this.scene.add(...e.objects);
+      removers.push(this.ambient.add(e.animator));
+    }
+    this.persistent = { quality: this.profile.quality, effects, removers };
+  }
+
+  private dropPersistent(): void {
+    if (!this.persistent) return;
+    for (const remove of this.persistent.removers) remove();
+    for (const e of this.persistent.effects)
+      for (const o of e.objects) {
+        this.scene.remove(o);
+        const mesh = o as Mesh;
+        mesh.geometry?.dispose();
+        if (mesh.material && mesh.material !== this.haloMaterial) (mesh.material as Material).dispose();
+      }
+    this.persistent = null;
   }
 
   /** Traço fino de cada órbita no plano do sistema, na cor dele: mostra de onde cada planeta gira em volta da estrela. */
@@ -748,7 +839,8 @@ export class GalaxyScene {
       dt = Math.min(0.1, (now - this.lastAmbient) / 1000);
       this.lastAmbient = now;
       this.ambient.tick(dt, now);
-      if (this.ambient.size > 0) this.dirty = true;
+      // Desenha mesmo se a última animação acabou agora: o quadro final (feixe apagado, pulso sumido) precisa aparecer.
+      this.dirty = true;
     }
     // Com o amortecimento, cada passo do giro se espalha pelos quadros seguintes. Sem interação, a câmera só é
     // atualizada nos quadros do movimento ambiente; mexendo nela (ou logo depois), em todo quadro.

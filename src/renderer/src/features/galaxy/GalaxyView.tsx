@@ -1,7 +1,8 @@
 import { FileText, Orbit, Palette, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '@shared/brand';
-import type { GalaxyGraph } from '@shared/knowledge';
+import { CHAT_EVENT_CHANNEL, type ChatEvent } from '@shared/chat';
+import { KNOWLEDGE_EVENT_CHANNEL, type GalaxyGraph, type KnowledgeEvent } from '@shared/knowledge';
 import { resolvePlanetStyle, type PlanetOverride } from '@shared/planets';
 import { Button } from '@renderer/components/ui/Button';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
@@ -10,7 +11,7 @@ import { useGalaxyGraph, useGalaxyStyles, useSetPlanetStyle } from '@renderer/fe
 import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { cn } from '@renderer/lib/cn';
 import { GalaxyScene } from './galaxy-scene';
-import { layoutGalaxy, searchNotes } from './layout';
+import { layoutGalaxy, noteInVault, searchNotes } from './layout';
 import { DEFAULT_GALAXY_QUALITY, GALAXY_PROFILES } from './quality';
 import { useGalaxyQuality } from '@renderer/features/settings/queries';
 import { PlanetEditor } from './PlanetEditor';
@@ -31,10 +32,10 @@ export function GalaxyView({ mode = 'full' }: { mode?: GalaxyMode }) {
       />
     );
   }
-  return <Galaxy key={workspace.id} workspaceId={workspace.id} mode={mode} />;
+  return <Galaxy key={workspace.id} workspaceId={workspace.id} knowledgeDir={workspace.knowledgeDir} mode={mode} />;
 }
 
-function Galaxy({ workspaceId, mode }: { workspaceId: string; mode: GalaxyMode }) {
+function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; knowledgeDir: string; mode: GalaxyMode }) {
   const panel = mode === 'panel';
   const graph = useGalaxyGraph(workspaceId);
   const openNote = useLayout((s) => s.openNote);
@@ -87,6 +88,25 @@ function Galaxy({ workspaceId, mode }: { workspaceId: string; mode: GalaxyMode }
   useEffect(() => {
     scene.current?.setProfile(profile);
   }, [profile]);
+
+  // Eventos reais (G5): o Claude editando uma nota manda uma nave até ela; nota alterada no disco pulsa.
+  useEffect(() => {
+    const offNotes = window.nexus.on(KNOWLEDGE_EVENT_CHANNEL, (payload) => {
+      const event = payload as KnowledgeEvent;
+      if (event.workspaceId !== workspaceId) return;
+      scene.current?.notesChanged(event.paths.filter((p) => /\.md$/i.test(p)));
+    });
+    const offChat = window.nexus.on(CHAT_EVENT_CHANNEL, (payload) => {
+      const event = payload as ChatEvent;
+      if (event.type !== 'activity' || !event.activity.changedFile) return;
+      const note = noteInVault(knowledgeDir, event.activity.changedFile);
+      if (note) scene.current?.claudeEdit(note);
+    });
+    return () => {
+      offNotes();
+      offChat();
+    };
+  }, [workspaceId, knowledgeDir]);
 
   useEffect(() => {
     if (graph.data && layout && styles) scene.current?.setData(graph.data, layout, styles);

@@ -355,3 +355,64 @@ test('movimento reduzido: sem movimento ambiente, a galáxia só desenha quando 
     removeUserData(userData);
   }
 });
+
+test('nota alterada por fora pulsa na galáxia', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Pulsos');
+    write(ws.knowledgeDir, 'Ideias/Roteiro.md', '# Roteiro\nVer [[Agenda]].\n');
+    write(ws.knowledgeDir, 'Ideias/Agenda.md', '# Agenda\n');
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '2');
+    // Eventos da criação das notas acima ainda podem chegar: conta a partir de quando a galáxia sossega
+    // (e depois do intervalo mínimo entre dois pulsos da mesma nota).
+    await page.waitForTimeout(4500);
+    const pulses = async () => Number((await canvas.getAttribute('data-pulses')) ?? '0');
+    const before = await pulses();
+    write(ws.knowledgeDir, 'Ideias/Agenda.md', '# Agenda\nAtualizada.\n');
+    await expect.poll(pulses).toBe(before + 1);
+    write(ws.knowledgeDir, 'Ideias/Nova.md', '# Nova\n');
+    await expect(canvas).toHaveAttribute('data-planets', '3');
+    await expect.poll(pulses).toBe(before + 2);
+    // Nada disso foi o Claude: nenhuma nave de atividade.
+    await expect(canvas).toHaveAttribute('data-activity-ships', '0');
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
+// Com o Claude Code real (modelo Haiku, uma mensagem curta): a nave do Claude vai até a nota que ele cria.
+test.describe('com o Claude Code real', () => {
+  test.skip(process.env.NEXUS_LIVE_TESTS !== '1', 'gasta cota do plano; rode com NEXUS_LIVE_TESTS=1');
+  test.describe.configure({ timeout: 180_000 });
+
+  test('o Claude criando uma nota manda uma nave até ela e o planeta pulsa', async () => {
+    const { app, page, userData } = await launchApp(undefined, {
+      claude: 'real',
+      env: { NEXUS_CLAUDE_MODEL: 'haiku' },
+    });
+    try {
+      const ws = await createWorkspace(page, 'Nave');
+      write(ws.knowledgeDir, 'Ideias/Roteiro.md', '# Roteiro\n');
+      const panel = page.getByRole('complementary', { name: 'Painel lateral' });
+      await panel.getByRole('tab', { name: 'Galáxia' }).click();
+      const canvas = panel.getByTestId('galaxy-canvas');
+      await expect(canvas).toHaveAttribute('data-planets', '1');
+      const box = page.getByRole('textbox', { name: 'Mensagem' });
+      await expect(box).toBeEnabled({ timeout: 30_000 });
+      const file = path.join(ws.knowledgeDir, 'Ideias', 'Teste da nave.md');
+      await box.fill(
+        `Use a ferramenta Write para criar o arquivo "${file}" com o conteúdo "# Teste da nave". Depois responda só "ok".`,
+      );
+      await box.press('Enter');
+      await expect(canvas).toHaveAttribute('data-activity-ships', '1', { timeout: 120_000 });
+      await expect(canvas).toHaveAttribute('data-planets', '2', { timeout: 60_000 });
+      await expect(canvas).toHaveAttribute('data-pulses', '1', { timeout: 30_000 });
+    } finally {
+      await app.close();
+      removeUserData(userData);
+    }
+  });
+});
