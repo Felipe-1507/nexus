@@ -103,7 +103,7 @@ export class GalaxyScene {
   private readonly haloMaterial: ShaderMaterial;
 
   private graph: GalaxyGraph = { notes: [], links: [] };
-  private layout: GalaxyLayout = { systems: [], notes: [] };
+  private layout: GalaxyLayout = { systems: [], orbits: [], notes: [] };
   private planets: InstancedMesh | null = null;
   private systemLabels: Array<{ el: HTMLDivElement; pos: Vector3; extent: number }> = [];
   private selected: number | null = null;
@@ -199,6 +199,7 @@ export class GalaxyScene {
     this.layout = layout;
     this.clearContent();
     this.buildSystems();
+    this.buildOrbits();
     this.buildPlanets(styles);
     this.buildRoutes();
     const keep = selectedPath ? graph.notes.findIndex((n) => n.path === selectedPath) : -1;
@@ -297,6 +298,40 @@ export class GalaxyScene {
       fog: false,
     });
     return new Points(geometry, material);
+  }
+
+  /** Traço fino de cada órbita no plano do sistema, na cor dele: mostra de onde cada planeta gira em volta da estrela. */
+  private buildOrbits(): void {
+    const { systems, orbits } = this.layout;
+    if (orbits.length === 0) return;
+    const SEGMENTS = 96;
+    const positions = new Float32Array(orbits.length * SEGMENTS * 6);
+    const colors = new Float32Array(orbits.length * SEGMENTS * 6);
+    const c = new Color();
+    let k = 0;
+    for (const o of orbits) {
+      const s = systems[o.system]!;
+      c.set(s.color);
+      for (let i = 0; i < SEGMENTS; i++) {
+        for (const j of [i, i + 1]) {
+          const a = (j / SEGMENTS) * Math.PI * 2;
+          positions.set([s.x + Math.cos(a) * o.radius, s.y, s.z + Math.sin(a) * o.radius], k * 3);
+          c.toArray(colors, k * 3);
+          k++;
+        }
+      }
+    }
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new BufferAttribute(colors, 3));
+    const material = new LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+      blending: AdditiveBlending,
+    });
+    this.content.add(new LineSegments(geometry, material));
   }
 
   private buildSystems(): void {

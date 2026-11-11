@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GalaxyGraph } from '@shared/knowledge';
-import { layoutGalaxy, recencyGlow, searchNotes } from './layout';
+import { footprint, layoutGalaxy, recencyGlow, searchNotes } from './layout';
 import { planetSize } from '@shared/planets';
 
 const DAY = 86_400_000;
@@ -56,8 +56,21 @@ describe('disposição da galáxia', () => {
     const { systems, notes } = layoutGalaxy(g, NOW);
     const dist = notes.map((n) => distance(n, systems[n.system]!));
     for (const d of dist) expect(d).toBeLessThanOrEqual(systems[0]!.extent);
-    expect(dist[0]).toBeLessThan(dist[2]!);
-    expect(dist[2]).toBeLessThan(dist[1]!);
+    expect(dist[0]).toBeLessThanOrEqual(dist[2]!);
+    expect(dist[2]).toBeLessThanOrEqual(dist[1]!);
+  });
+
+  it.each([10, 60, 400])('nenhum planeta encosta em outro (sistema com %i notas)', (count) => {
+    const paths = Array.from({ length: count }, (_, n) => `P/Nota ${n}.md`);
+    const degrees = paths.map((_, n) => (n * 7) % 13);
+    const chars = paths.map((_, n) => (n * 911) % 6000);
+    const { notes, orbits } = layoutGalaxy(graph(paths, degrees, chars), NOW);
+    expect(orbits.length).toBeGreaterThan(0);
+    for (let i = 0; i < notes.length; i++)
+      for (let j = i + 1; j < notes.length; j++)
+        expect(distance(notes[i]!, notes[j]!)).toBeGreaterThan(
+          footprint(notes[i]!.size) + footprint(notes[j]!.size) - 0.01,
+        );
   });
 
   it('a posição é estável: a mesma nota fica no mesmo lugar quando o vault não muda', () => {
