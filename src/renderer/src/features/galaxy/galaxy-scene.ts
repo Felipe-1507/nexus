@@ -39,6 +39,7 @@ import { ActivityLayer, type Spot } from './activity-effects';
 import { createNebulaMaterial, createShootingStars, haloBuffer, seeded, shaderClock, type Effect } from './effects';
 import { AmbientClock, ambientFrameDue, ambientInterval, type Animator } from './ambient';
 import type { GalaxyProfile } from './quality';
+import { planTour, TOUR_DWELL_MS, TOUR_FLY_MS, type TourStop } from './explore';
 import { createMoons, MOON_LABELS, moonKind, moonName, moonPosition, planMoons, type MoonPlan } from './moon-effects';
 import { createPlanetMaterial, createRingMaterial, kindIndex, RING_INNER, RING_OUTER } from './planet-material';
 
@@ -49,11 +50,17 @@ export interface GalaxyCallbacks {
   onOpen: (index: number) => void;
   /** Clique numa lua: abrir o anexo `name` da nota `index`. */
   onMoon?: (index: number, name: string) => void;
+  /** Tour guiado (G9): parada atual, ou null quando termina ou é interrompido. */
+  onTour?: (state: { index: number; total: number; stop: TourStop } | null) => void;
 }
 
 const BACKGROUND = 0x05050b;
 const ROUTE_OPACITY = 0.16;
 const FLY_MS = 900;
+/** Velocidade do giro automático: o normal, o do modo contemplativo e o das paradas do tour. */
+const SPIN_SPEED = 0.25;
+const CONTEMPLATIVE_SPIN = 0.35;
+const TOUR_SPIN = 0.9;
 const CLICK_SLOP_PX = 5;
 /** Quanto o amortecimento da câmera continua agindo depois que o usuário solta. */
 const SETTLE_MS = 2000;
@@ -118,7 +125,11 @@ export class GalaxyScene {
     fromTarget: Vector3;
     toTarget: Vector3;
     t0: number;
+    duration: number;
   } | null = null;
+  /** Tour guiado em andamento (G9) e modo contemplativo. */
+  private tour: { stops: TourStop[]; index: number; next: number } | null = null;
+  private contemplative = false;
   private frame = 0;
   private framed = false;
   private disposed = false;
@@ -214,7 +225,7 @@ export class GalaxyScene {
     this.controls.maxDistance = 3000;
     this.controls.minDistance = 2;
     this.controls.autoRotate = false;
-    this.controls.autoRotateSpeed = 0.25;
+    this.controls.autoRotateSpeed = SPIN_SPEED;
     this.controls.addEventListener('end', () => {
       this.interacting = false;
       this.settleUntil = performance.now() + SETTLE_MS;
@@ -223,6 +234,8 @@ export class GalaxyScene {
       this.interacting = true;
       this.autoRotate = false;
       this.fly = null;
+      // Mexer na câmera assume o controle: o tour para.
+      if (this.tour) this.stopTour();
     });
 
     const canvas = this.renderer.domElement;
@@ -384,7 +397,7 @@ export class GalaxyScene {
     this.flyTo(center.clone().add(offset.normalize().multiplyScalar(distance)), center);
   }
 
-  private flyTo(to: Vector3, target: Vector3): void {
+  private flyTo(to: Vector3, target: Vector3, duration = FLY_MS): void {
     if (this.options.reducedMotion) {
       this.camera.position.copy(to);
       this.controls.target.copy(target);
@@ -397,8 +410,82 @@ export class GalaxyScene {
       fromTarget: this.controls.target.clone(),
       toTarget: target,
       t0: performance.now(),
+      duration,
     };
     this.container.dataset.flying = 'true';
+  }
+
+  // ---- exploração (G9) ----
+
+  /** Começa o tour guiado: visão geral, depois os sistemas e as notas centrais, uma parada de cada vez. */
+  startTour(): void {
+    this.wake();
+    this.setContemplative(false);
+    if (this.selected !== null) this.select(null);
+    this.tour = { stops: planTour(this.graph, this.layout), index: -1, next: 0 };
+    this.nextStop();
+  }
+
+  /** Vai para a próxima parada do tour (ou termina, depois da última). */
+  nextStop(): void {
+    const tour = this.tour;
+    if (!tour) return;
+    tour.index++;
+    const stop = tour.stops[tour.index];
+    if (!stop) {
+      this.stopTour();
+      return;
+    }
+    this.wake();
+    this.autoRotate = false;
+    const pose = this.poseFor(stop);
+    this.flyTo(pose.position, pose.target, TOUR_FLY_MS);
+    tour.next = performance.now() + (this.options.reducedMotion ? 0 : TOUR_FLY_MS) + TOUR_DWELL_MS;
+    this.container.dataset.tour = `${tour.index + 1}/${tour.stops.length}`;
+    this.callbacks.onTour?.({ index: tour.index, total: tour.stops.length, stop });
+  }
+
+  stopTour(): void {
+    if (!this.tour) return;
+    this.tour = null;
+    this.autoRotate = false;
+    this.controls.autoRotateSpeed = SPIN_SPEED;
+    this.container.dataset.tour = '';
+    this.callbacks.onTour?.(null);
+  }
+
+  /** Modo contemplativo: a câmera se afasta e a galáxia gira devagar (a tela esconde os controles). */
+  setContemplative(on: boolean): void {
+    if (on === this.contemplative) return;
+    this.contemplative = on;
+    this.container.dataset.contemplative = String(on);
+    this.wake();
+    if (!on) {
+      this.controls.autoRotateSpeed = SPIN_SPEED;
+      return;
+    }
+    this.stopTour();
+    if (this.selected !== null) this.select(null);
+    const pose = this.overviewPose();
+    this.flyTo(pose.position, pose.target, TOUR_FLY_MS);
+    this.controls.autoRotateSpeed = CONTEMPLATIVE_SPIN;
+    this.autoRotate = !this.options.reducedMotion;
+  }
+
+  /** Onde a câmera fica em cada parada: de cima, de lado, sem mudar demais a direção de onde ela já olha. */
+  private poseFor(stop: TourStop): { position: Vector3; target: Vector3 } {
+    if (stop.kind === 'overview') return this.overviewPose();
+    const p = stop.kind === 'system' ? this.layout.systems[stop.system]! : this.layout.notes[stop.note]!;
+    const target = new Vector3(p.x, p.y, p.z);
+    const distance =
+      stop.kind === 'system'
+        ? Math.max(20, this.layout.systems[stop.system]!.extent * 2.8)
+        : Math.max(10, this.layout.notes[stop.note]!.size * 14);
+    const dir = this.camera.position.clone().sub(this.controls.target);
+    dir.y = 0;
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    dir.normalize().multiplyScalar(0.83).setY(0.55).normalize();
+    return { position: target.clone().add(dir.multiplyScalar(distance)), target };
   }
 
   private previousPaths: string[] = [];
@@ -462,6 +549,7 @@ export class GalaxyScene {
 
   dispose(): void {
     this.disposed = true;
+    this.tour = null;
     cancelAnimationFrame(this.frame);
     this.activity?.dispose();
     this.dropPersistent();
@@ -842,6 +930,14 @@ export class GalaxyScene {
   }
 
   private frameAll(): void {
+    const pose = this.overviewPose();
+    this.controls.target.copy(pose.target);
+    this.camera.position.copy(pose.position);
+    this.controls.update();
+  }
+
+  /** Posição da câmera que mostra a galáxia inteira. */
+  private overviewPose(): { position: Vector3; target: Vector3 } {
     // Centro do conjunto (a espiral cresce para um lado, então o núcleo não fica no meio do desenho).
     const { systems } = this.layout;
     const minX = Math.min(...systems.map((s) => s.x - s.extent));
@@ -856,9 +952,7 @@ export class GalaxyScene {
     const vFov = (this.camera.fov * Math.PI) / 180;
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
     const distance = (radius / Math.sin(Math.min(vFov, hFov) / 2)) * 0.9;
-    this.controls.target.copy(center);
-    this.camera.position.set(0, 0.55, 0.83).normalize().multiplyScalar(distance).add(center);
-    this.controls.update();
+    return { position: new Vector3(0, 0.55, 0.83).normalize().multiplyScalar(distance).add(center), target: center };
   }
 
   // ---- interação ----
@@ -962,7 +1056,7 @@ export class GalaxyScene {
     if (document.hidden || this.container.clientWidth === 0 || this.container.clientHeight === 0) return;
 
     if (this.fly) {
-      const t = Math.min(1, (performance.now() - this.fly.t0) / FLY_MS);
+      const t = Math.min(1, (performance.now() - this.fly.t0) / this.fly.duration);
       const k = easeInOut(t);
       this.camera.position.lerpVectors(this.fly.from, this.fly.to, k);
       this.controls.target.lerpVectors(this.fly.fromTarget, this.fly.toTarget, k);
@@ -970,8 +1064,14 @@ export class GalaxyScene {
         this.fly = null;
         this.settleUntil = performance.now() + SETTLE_MS;
         this.container.dataset.flying = 'false';
+        // Chegou numa parada do tour: gira devagar em volta dela enquanto espera a próxima.
+        if (this.tour && !this.options.reducedMotion) {
+          this.controls.autoRotateSpeed = TOUR_SPIN;
+          this.autoRotate = true;
+        }
       }
     }
+    if (this.tour && performance.now() >= this.tour.next) this.nextStop();
     // Movimento ambiente (giro automático e animações): no ritmo do perfil, mais lento ou parado sem foco, e nunca
     // com movimento reduzido. A interação (arrastar, voar até um planeta) continua desenhando em todo quadro.
     const now = performance.now();

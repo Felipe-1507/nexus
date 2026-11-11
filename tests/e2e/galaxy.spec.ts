@@ -512,3 +512,56 @@ test('busca visual: notas encontradas acendem, o resto apaga, #tag filtra e "Enq
     removeUserData(userData);
   }
 });
+
+test('exploração: tour guiado passa sozinho pelas paradas, para com Esc ou ao mexer; modo contemplativo esconde os controles', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Explorar');
+    write(ws.knowledgeDir, 'Fiscal/ST.md', '# ST\n[[CEST]]\n');
+    write(ws.knowledgeDir, 'Fiscal/CEST.md', '# CEST\n');
+    write(ws.knowledgeDir, 'Contas/Fechamento.md', '# Fechamento\n[[ST]]\n');
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '3');
+    const toolbar = page.getByRole('toolbar', { name: 'Explorar a galáxia' });
+
+    // Visão geral + Fiscal + nota central + Contas + nota central = 5 paradas.
+    await toolbar.getByRole('button', { name: 'Tour' }).click();
+    const caption = page.getByRole('region', { name: 'Tour guiado' });
+    await expect(canvas).toHaveAttribute('data-tour', '1/5');
+    await expect(caption).toContainText('A galáxia inteira');
+    await expect(caption).toContainText('3 notas em 2 sistemas');
+    // Avança sozinho depois do voo e da pausa.
+    await expect(canvas).toHaveAttribute('data-tour', '2/5', { timeout: 10_000 });
+    await expect(caption).toContainText('Fiscal');
+    await caption.getByRole('button', { name: 'Próxima' }).click();
+    await expect(canvas).toHaveAttribute('data-tour', '3/5');
+    await expect(caption).toContainText('Nota central de Fiscal');
+    await page.keyboard.press('Escape');
+    await expect(canvas).toHaveAttribute('data-tour', '');
+    await expect(caption).toHaveCount(0);
+
+    // Arrastar a câmera assume o controle e encerra o tour.
+    await toolbar.getByRole('button', { name: 'Tour' }).click();
+    await expect(canvas).toHaveAttribute('data-tour', '1/5');
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2 + 10, { steps: 5 });
+    await page.mouse.up();
+    await expect(canvas).toHaveAttribute('data-tour', '');
+
+    // Contemplativo: some a busca e a barra; Esc volta.
+    await toolbar.getByRole('button', { name: 'Contemplar' }).click();
+    await expect(canvas).toHaveAttribute('data-contemplative', 'true');
+    await expect(page.getByRole('combobox', { name: 'Buscar nota na galáxia' })).toHaveCount(0);
+    await expect(toolbar).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Sair do modo contemplativo' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(canvas).toHaveAttribute('data-contemplative', 'false');
+    await expect(page.getByRole('combobox', { name: 'Buscar nota na galáxia' })).toBeVisible();
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});

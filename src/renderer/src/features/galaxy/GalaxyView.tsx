@@ -1,4 +1,4 @@
-import { FileText, FolderOpen, Focus, Orbit, Palette, Paperclip, Search } from 'lucide-react';
+import { FileText, FolderOpen, Focus, Orbit, Palette, Paperclip, Route, Search, SkipForward, Sparkles, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '@shared/brand';
 import { CHAT_EVENT_CHANNEL, type ChatEvent } from '@shared/chat';
@@ -17,6 +17,7 @@ import { DEFAULT_GALAXY_QUALITY, GALAXY_PROFILES } from './quality';
 import { useGalaxyQuality } from '@renderer/features/settings/queries';
 import { PlanetEditor } from './PlanetEditor';
 import { MOON_COLORS, MOON_LABELS, moonKind, moonName } from './moon-effects';
+import { describeStop, type TourStop } from './explore';
 
 /** `full`: tela principal (clicar num planeta abre a nota). `panel`: aba do painel direito, ao lado do chat. */
 export type GalaxyMode = 'full' | 'panel';
@@ -48,6 +49,11 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
   const [failure, setFailure] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  // Exploração (G9): parada atual do tour e modo contemplativo.
+  const [tour, setTour] = useState<{ index: number; total: number; stop: TourStop } | null>(null);
+  const [contemplative, setContemplative] = useState(false);
+  const [awake, setAwake] = useState(true);
+  const sleepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openAttachment = useRef((note: string, name: string, reveal = false) => {
     setAttachmentError(null);
     invoke('knowledge:openAttachment', { workspaceId, note, name, reveal }).catch((err: unknown) =>
@@ -85,6 +91,7 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
             const note = current.current?.notes[i];
             if (note) openAttachment(note.path, name);
           },
+          onTour: setTour,
         },
         { reducedMotion, openOnClick: !panel, profile: profileRef.current },
       );
@@ -98,6 +105,37 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
   }, [openNote, workspaceId, panel, openAttachment]);
 
   useEffect(() => setAttachmentError(null), [selected]);
+
+  useEffect(() => {
+    scene.current?.setContemplative(contemplative);
+    // Ao entrar, o botão de sair aparece e some sozinho se o mouse não se mexer.
+    if (sleepTimer.current) clearTimeout(sleepTimer.current);
+    if (contemplative) sleepTimer.current = setTimeout(() => setAwake(false), 2500);
+  }, [contemplative]);
+
+  // Esc encerra o tour e o modo contemplativo.
+  useEffect(() => {
+    if (!tour && !contemplative) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      scene.current?.stopTour();
+      setContemplative(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tour, contemplative]);
+
+  useEffect(() => () => {
+    if (sleepTimer.current) clearTimeout(sleepTimer.current);
+  }, []);
+
+  /** No modo contemplativo, o botão de sair só aparece quando o mouse se mexe. */
+  function wakeControls() {
+    if (!contemplative) return;
+    setAwake(true);
+    if (sleepTimer.current) clearTimeout(sleepTimer.current);
+    sleepTimer.current = setTimeout(() => setAwake(false), 2500);
+  }
 
   // Trocar de modo nas Configurações vale na hora, sem recriar a cena (a câmera e a seleção ficam onde estão).
   useEffect(() => {
@@ -135,6 +173,7 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
       className={cn('relative min-h-0 overflow-hidden bg-[#05050b] text-white', panel ? 'flex-1' : 'h-full')}
       data-testid="galaxy-view"
       data-mode={mode}
+      onMouseMove={wakeControls}
     >
       <div ref={container} className="absolute inset-0" data-testid="galaxy-canvas" />
 
@@ -153,8 +192,58 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
         />
       )}
 
-      {data && data.notes.length > 0 && (
+      {contemplative && (
+        <button
+          type="button"
+          onClick={() => setContemplative(false)}
+          className={cn(
+            'absolute top-3 right-3 flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/50 px-3 py-1.5 text-xs text-white/80 backdrop-blur transition-opacity duration-500 hover:text-white',
+            awake ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        >
+          <X size={12} /> Sair do modo contemplativo
+        </button>
+      )}
+
+      {tour && data && layout && (
+        <TourCaption
+          {...describeStop(tour.stop, data, layout)}
+          step={tour.index + 1}
+          total={tour.total}
+          panel={panel}
+          onNext={() => scene.current?.nextStop()}
+          onStop={() => scene.current?.stopTour()}
+        />
+      )}
+
+      {data && data.notes.length > 0 && !contemplative && (
         <>
+          <div
+            className={cn('absolute flex gap-1.5', panel ? 'top-[3.4rem] right-3' : 'top-10 right-4')}
+            role="toolbar"
+            aria-label="Explorar a galáxia"
+          >
+            <button
+              type="button"
+              className={TOOL_BUTTON}
+              title="Tour guiado pelos sistemas e notas centrais (Esc para sair)"
+              onClick={() => (tour ? scene.current?.stopTour() : scene.current?.startTour())}
+              aria-pressed={tour !== null}
+            >
+              <Route size={14} /> {tour ? 'Parar tour' : 'Tour'}
+            </button>
+            <button
+              type="button"
+              className={TOOL_BUTTON}
+              title="Modo contemplativo: esconde os controles e deixa a galáxia girando (Esc para sair)"
+              onClick={() => {
+                setAwake(true);
+                setContemplative(true);
+              }}
+            >
+              <Sparkles size={14} /> Contemplar
+            </button>
+          </div>
           <SearchBox
             graph={data}
             onPick={(i) => scene.current?.focus(i)}
@@ -172,7 +261,7 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
             {data.notes.length} {data.notes.length === 1 ? 'nota' : 'notas'} · {data.links.length}{' '}
             {data.links.length === 1 ? 'rota' : 'rotas'}
           </p>
-          {!panel && (
+          {!panel && !tour && (
             <p className="pointer-events-none absolute right-4 bottom-4 text-[11px] text-white/35">
               Arraste para girar · roda para aproximar · botão direito para mover
             </p>
@@ -180,7 +269,7 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
         </>
       )}
 
-      {note && selected !== null && (
+      {note && selected !== null && !contemplative && (
         <section
           aria-label="Planeta selecionado"
           className={cn(
@@ -271,6 +360,53 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
         </section>
       )}
     </div>
+  );
+}
+
+const TOOL_BUTTON =
+  'flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-white/85 backdrop-blur hover:bg-black/75 hover:text-white focus-visible:outline-2 focus-visible:outline-white/60';
+
+/** Legenda da parada atual do tour, com os controles. */
+function TourCaption({
+  title,
+  detail,
+  step,
+  total,
+  panel,
+  onNext,
+  onStop,
+}: {
+  title: string;
+  detail: string;
+  step: number;
+  total: number;
+  panel: boolean;
+  onNext: () => void;
+  onStop: () => void;
+}) {
+  return (
+    <section
+      aria-label="Tour guiado"
+      aria-live="polite"
+      className={cn(
+        'absolute rounded-2xl border border-white/10 bg-black/60 px-4 py-3 backdrop-blur',
+        panel ? 'right-3 bottom-3 left-3' : 'bottom-10 left-1/2 w-80 -translate-x-1/2',
+      )}
+    >
+      <p className="text-[11px] tracking-wide text-white/45 uppercase" data-testid="tour-step">
+        Parada {step} de {total}
+      </p>
+      <p className="mt-0.5 truncate text-sm font-semibold">{title}</p>
+      <p className="truncate text-xs text-white/60">{detail}</p>
+      <div className="mt-2 flex justify-end gap-2">
+        <Button onClick={onStop}>
+          <X size={14} /> Parar
+        </Button>
+        <Button variant="primary" onClick={onNext}>
+          <SkipForward size={14} /> {step === total ? 'Concluir' : 'Próxima'}
+        </Button>
+      </div>
+    </section>
   );
 }
 
