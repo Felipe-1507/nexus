@@ -86,9 +86,11 @@ describe('metadados para a aparência do planeta', () => {
     expect(note.codeBlocks).toBe(2);
     expect(note.images).toBe(3);
     expect(note.attachments).toEqual(['contrato.pdf', 'audio.m4a']);
+    // As luas: todos os arquivos incorporados, sem repetir, sem as notas e sem os links externos.
+    expect(note.embeds).toEqual(['diagrama.png', 'Foto da sala.JPG', 'contrato.pdf', 'audio.m4a', 'imagens/capa nova.webp']);
   });
 
   it('nota sem nada disso', () => {
-    expect(parseNote('# Só texto\n\nNada aqui.', 'a.md')).toMatchObject({ codeBlocks: 0, images: 0, attachments: [] });
+    expect(parseNote('# Só texto\n\nNada aqui.', 'a.md')).toMatchObject({ codeBlocks: 0, images: 0, attachments: [], embeds: [] });
   });
 });

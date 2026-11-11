@@ -92,3 +92,24 @@ describe('segurança', () => {
     expect(fs.readdirSync(outside)).toEqual(['segredo.md']);
   });
 });
+
+describe('anexos incorporados (luas)', () => {
+  it('procura ao lado da nota, na raiz e, só pelo nome, em qualquer pasta; nunca fora do vault nem em ocultas', () => {
+    write('Processos/Fechamento.md');
+    write('Processos/contrato.pdf');
+    write('Anexos/planilha.xlsx');
+    write('Anexos/sub/planilha.xlsx');
+    write('raiz.png');
+    write('.obsidian/segredo.pdf');
+    fs.writeFileSync(path.join(base, 'fora.pdf'), 'x');
+    const at = (rel: string) => path.join(vault.root, ...rel.split('/'));
+    expect(vault.findEmbed('contrato.pdf', 'Processos/Fechamento.md')).toBe(at('Processos/contrato.pdf'));
+    expect(vault.findEmbed('raiz.png', 'Processos/Fechamento.md')).toBe(at('raiz.png'));
+    expect(vault.findEmbed('PLANILHA.xlsx', 'Ideias.md')?.toLowerCase()).toBe(at('Anexos/planilha.xlsx').toLowerCase());
+    expect(vault.findEmbed('sub/planilha.xlsx', 'Ideias.md')).toBe(at('Anexos/sub/planilha.xlsx'));
+    expect(vault.findEmbed('segredo.pdf', 'Ideias.md')).toBeNull();
+    expect(vault.findEmbed('../fora.pdf', 'Ideias.md')).toBeNull();
+    expect(vault.findEmbed('Fechamento.md', 'Ideias.md')).toBeNull();
+    expect(vault.findEmbed('nada.pdf', 'Ideias.md')).toBeNull();
+  });
+});

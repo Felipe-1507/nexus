@@ -1,4 +1,4 @@
-import { FileText, Orbit, Palette, Search } from 'lucide-react';
+import { FileText, FolderOpen, Orbit, Palette, Paperclip, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '@shared/brand';
 import { CHAT_EVENT_CHANNEL, type ChatEvent } from '@shared/chat';
@@ -10,11 +10,13 @@ import { useLayout } from '@renderer/app/shell/layout-store';
 import { useGalaxyGraph, useGalaxyStyles, useSetPlanetStyle } from '@renderer/features/knowledge/queries';
 import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { cn } from '@renderer/lib/cn';
+import { invoke } from '@renderer/lib/ipc';
 import { GalaxyScene } from './galaxy-scene';
 import { layoutGalaxy, noteInVault, searchNotes } from './layout';
 import { DEFAULT_GALAXY_QUALITY, GALAXY_PROFILES } from './quality';
 import { useGalaxyQuality } from '@renderer/features/settings/queries';
 import { PlanetEditor } from './PlanetEditor';
+import { MOON_COLORS, MOON_LABELS, moonKind, moonName } from './moon-effects';
 
 /** `full`: tela principal (clicar num planeta abre a nota). `panel`: aba do painel direito, ao lado do chat. */
 export type GalaxyMode = 'full' | 'panel';
@@ -45,6 +47,13 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
   const [selected, setSelected] = useState<number | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const openAttachment = useRef((note: string, name: string, reveal = false) => {
+    setAttachmentError(null);
+    invoke('knowledge:openAttachment', { workspaceId, note, name, reveal }).catch((err: unknown) =>
+      setAttachmentError(err instanceof Error ? err.message : String(err)),
+    );
+  }).current;
   const overrides = useGalaxyStyles(workspaceId).data;
   const setPlanet = useSetPlanetStyle(workspaceId);
   // Aparência de cada planeta: o sorteio da nota com o que o usuário trocou por cima.
@@ -72,6 +81,10 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
             const note = current.current?.notes[i];
             if (note) openNote(workspaceId, note.path);
           },
+          onMoon: (i, name) => {
+            const note = current.current?.notes[i];
+            if (note) openAttachment(note.path, name);
+          },
         },
         { reducedMotion, openOnClick: !panel, profile: profileRef.current },
       );
@@ -82,7 +95,9 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
       scene.current?.dispose();
       scene.current = null;
     };
-  }, [openNote, workspaceId, panel]);
+  }, [openNote, workspaceId, panel, openAttachment]);
+
+  useEffect(() => setAttachmentError(null), [selected]);
 
   // Trocar de modo nas Configurações vale na hora, sem recriar a cena (a câmera e a seleção ficam onde estão).
   useEffect(() => {
@@ -173,6 +188,47 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
           </p>
           {note.tags.length > 0 && (
             <p className="mt-1 truncate text-xs text-white/55">{note.tags.map((t) => `#${t}`).join(' ')}</p>
+          )}
+          {note.moons && note.moons.length > 0 && (
+            <div className="mt-2" data-testid="planet-moons">
+              <p className="text-[11px] tracking-wide text-white/45 uppercase">
+                {note.moons.length === 1 ? '1 anexo' : `${note.moons.length} anexos`}
+              </p>
+              <ul className="mt-1 max-h-28 space-y-0.5 overflow-y-auto" aria-label="Anexos da nota">
+                {note.moons.map((name) => (
+                  <li key={name} className="group flex items-center gap-1.5 text-xs">
+                    <span
+                      aria-hidden
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ background: MOON_COLORS[moonKind(name)] }}
+                    />
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate text-left text-white/80 hover:text-white hover:underline"
+                      title={`${MOON_LABELS[moonKind(name)]}: abrir ${name}`}
+                      onClick={() => openAttachment(note.path, name)}
+                    >
+                      {moonName(name)}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Mostrar ${moonName(name)} na pasta`}
+                      title="Mostrar na pasta"
+                      className="shrink-0 text-white/40 opacity-0 group-hover:opacity-100 hover:text-white focus:opacity-100"
+                      onClick={() => openAttachment(note.path, name, true)}
+                    >
+                      <FolderOpen size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {attachmentError && (
+                <p role="alert" className="mt-1 text-xs break-words text-white/70">
+                  <Paperclip size={11} className="mr-1 inline" />
+                  {attachmentError}
+                </p>
+              )}
+            </div>
           )}
           {styles?.[selected]?.detail && (
             <p className="mt-2 text-xs leading-5 break-words text-white/75" data-testid="planet-detail">

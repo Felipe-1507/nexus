@@ -17,6 +17,7 @@ type KnowledgeHandlers = Pick<
   | 'knowledge:trash'
   | 'knowledge:links'
   | 'knowledge:resolve'
+  | 'knowledge:openAttachment'
 >;
 
 export function knowledgeHandlers(knowledge: KnowledgeService, planets: PlanetStyleStore): KnowledgeHandlers {
@@ -42,5 +43,9 @@ export function knowledgeHandlers(knowledge: KnowledgeService, planets: PlanetSt
     'knowledge:resolve': async ({ workspaceId, target, from }) => ({
       path: await knowledge.resolveLink(workspaceId, target, from),
     }),
+    'knowledge:openAttachment': async ({ workspaceId, note, name, reveal }) => {
+      await knowledge.openAttachment(workspaceId, note, name, reveal);
+      return null;
+    },
   };
 }

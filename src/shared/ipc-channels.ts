@@ -85,6 +85,7 @@ export const IPC_CHANNELS = [
   'knowledge:trash',
   'knowledge:links',
   'knowledge:resolve',
+  'knowledge:openAttachment',
   'code:list',
   'code:read',
   'code:write',

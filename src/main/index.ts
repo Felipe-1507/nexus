@@ -208,6 +208,8 @@ function bootstrap(): void {
   knowledge = new KnowledgeService({
     workspaces,
     watch: createWatcher(),
+    open: (file) => shell.openPath(file),
+    reveal: (file) => shell.showItemInFolder(file),
     emit: (event) => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(KNOWLEDGE_EVENT_CHANNEL, event);
     },

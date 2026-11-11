@@ -18,6 +18,8 @@ export interface NoteMeta {
   images: number;
   /** Arquivos incorporados que não são imagens nem notas. */
   attachments: string[];
+  /** Arquivos incorporados (imagens e anexos): as luas do planeta. */
+  embeds: string[];
 }
 
 const stem = (p: string) => p.replace(/\.md$/i, '').toLowerCase();
@@ -117,6 +119,7 @@ export class NoteIndex {
       codeBlocks: n.codeBlocks,
       images: n.images,
       attachments: n.attachments.length,
+      moons: n.embeds,
     }));
     return { notes, links, directions };
   }
@@ -188,6 +191,7 @@ export async function buildIndex(vault: Vault, previous?: NoteIndex): Promise<No
           codeBlocks: parsed.codeBlocks,
           images: parsed.images,
           attachments: parsed.attachments,
+          embeds: parsed.embeds,
         };
       } catch {
         // Nota que sumiu ou não pôde ser lida durante a varredura: fica fora desta vez.

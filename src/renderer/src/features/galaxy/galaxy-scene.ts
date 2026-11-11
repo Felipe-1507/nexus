@@ -39,6 +39,7 @@ import { ActivityLayer, type Spot } from './activity-effects';
 import { createNebulaMaterial, createShootingStars, haloBuffer, seeded, shaderClock, type Effect } from './effects';
 import { AmbientClock, ambientFrameDue, ambientInterval, type Animator } from './ambient';
 import type { GalaxyProfile } from './quality';
+import { createMoons, MOON_LABELS, moonKind, moonName, moonPosition, planMoons, type MoonPlan } from './moon-effects';
 import { createPlanetMaterial, createRingMaterial, kindIndex, RING_INNER, RING_OUTER } from './planet-material';
 
 export interface GalaxyCallbacks {
@@ -46,6 +47,8 @@ export interface GalaxyCallbacks {
   onSelect: (index: number | null) => void;
   /** Clique num planeta: abrir a nota. */
   onOpen: (index: number) => void;
+  /** Clique numa lua: abrir o anexo `name` da nota `index`. */
+  onMoon?: (index: number, name: string) => void;
 }
 
 const BACKGROUND = 0x05050b;
@@ -133,6 +136,9 @@ export class GalaxyScene {
   /** Nota (caminho em minúsculas) → índice no grafo atual. */
   private pathIndex = new Map<string, number>();
   private styles: PlanetStyle[] = [];
+  /** Luas de anexos da cena atual (G7) e a que está sob o ponteiro. */
+  private moons: MoonPlan[] = [];
+  private hoveredMoon: number | null = null;
   /** Giro automático da câmera (para quando o usuário mexe nela). É movimento ambiente: segue o limite do perfil. */
   private autoRotate: boolean;
   /** Animações ambientes das próximas etapas (naves, cometas, pulsos). */
@@ -315,11 +321,13 @@ export class GalaxyScene {
     this.buildSystems();
     this.buildOrbits();
     this.buildPlanets(styles);
+    this.buildMoons();
     this.buildRoutes();
     this.buildEffects();
     const keep = selectedPath ? graph.notes.findIndex((n) => n.path === selectedPath) : -1;
     this.selected = keep >= 0 ? keep : null;
     this.hovered = null;
+    this.hoveredMoon = null;
     this.updateHighlight();
     if (!this.framed && graph.notes.length > 0) {
       this.frameAll();
@@ -638,6 +646,14 @@ export class GalaxyScene {
     if (rings.length > 0) this.content.add(this.buildRings(rings, styles));
   }
 
+  /** Luas dos anexos, até os limites do perfil (o modo Leve mostra menos por planeta). */
+  private buildMoons(): void {
+    this.moons = planMoons(this.graph, this.layout, this.profile);
+    const mesh = createMoons(this.moons, this.layout, this.time, this.rim);
+    if (mesh) this.content.add(mesh);
+    this.container.dataset.moons = String(this.moons.length);
+  }
+
   /** Anéis: um disco por planeta, inclinado de um jeito próprio, desenhado todo de uma vez. */
   private buildRings(indices: number[], styles: PlanetStyle[]): InstancedMesh {
     const geometry = new RingGeometry(RING_INNER, RING_OUTER, 64, 1);
@@ -711,6 +727,7 @@ export class GalaxyScene {
     for (const label of this.systemLabels) label.el.remove();
     this.systemLabels = [];
     this.planets = null;
+    this.moons = [];
   }
 
   private updateHighlight(): void {
@@ -760,6 +777,36 @@ export class GalaxyScene {
     return hit?.instanceId ?? null;
   }
 
+  /**
+   * Lua sob o ponteiro. As luas andam no shader, então a posição é recalculada com a mesma conta e comparada na tela;
+   * a área de clique tem um mínimo, porque de longe uma lua é um ponto.
+   */
+  private pickMoon(x: number, y: number): number | null {
+    if (this.moons.length === 0) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const focal = rect.height / 2 / Math.tan((this.camera.fov * Math.PI) / 360);
+    const v = new Vector3();
+    let best: number | null = null;
+    let bestDist = Infinity;
+    this.moons.forEach((m, i) => {
+      const center = this.layout.notes[m.note];
+      if (!center) return;
+      moonPosition(v, m, center, this.time.value);
+      const depth = this.camera.position.distanceTo(v);
+      v.project(this.camera);
+      if (v.z > 1) return;
+      const sx = rect.left + ((v.x + 1) / 2) * rect.width;
+      const sy = rect.top + ((1 - v.y) / 2) * rect.height;
+      const d = Math.hypot(sx - x, sy - y);
+      const reach = Math.max(7, ((m.size * focal) / depth) * 1.6);
+      if (d <= reach && d < bestDist) {
+        best = i;
+        bestDist = d;
+      }
+    });
+    return best;
+  }
+
   private onPointerMove = (e: PointerEvent) => {
     this.pointer = { x: e.clientX, y: e.clientY };
   };
@@ -778,6 +825,13 @@ export class GalaxyScene {
     if (e.button !== 0 || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_SLOP_PX) return;
     const index = this.pick(e.clientX, e.clientY);
     if (index === null) {
+      const moon = this.pickMoon(e.clientX, e.clientY);
+      const plan = moon === null ? undefined : this.moons[moon];
+      if (plan) {
+        this.focus(plan.note);
+        this.callbacks.onMoon?.(plan.note, plan.name);
+        return;
+      }
       this.select(null);
       return;
     }
@@ -857,10 +911,14 @@ export class GalaxyScene {
     this.dirty = false;
 
     const hovered = this.pointer && !this.down ? this.pick(this.pointer.x, this.pointer.y) : null;
-    if (hovered !== this.hovered) {
+    const hoveredMoon =
+      hovered === null && this.pointer && !this.down ? this.pickMoon(this.pointer.x, this.pointer.y) : null;
+    if (hovered !== this.hovered || hoveredMoon !== this.hoveredMoon) {
+      const planetChanged = hovered !== this.hovered;
       this.hovered = hovered;
-      this.renderer.domElement.style.cursor = hovered === null ? 'grab' : 'pointer';
-      if (this.selected === null) this.updateHighlight();
+      this.hoveredMoon = hoveredMoon;
+      this.renderer.domElement.style.cursor = hovered === null && hoveredMoon === null ? 'grab' : 'pointer';
+      if (planetChanged && this.selected === null) this.updateHighlight();
     }
     this.updateLabels();
     this.renderer.render(this.scene, this.camera);
@@ -888,6 +946,15 @@ export class GalaxyScene {
       const opacity = s.visible ? Math.max(0, Math.min(1, (label.extent * 24) / dist - 0.2)) : 0;
       label.el.style.opacity = String(opacity);
       if (opacity > 0) label.el.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, -100%)`;
+    }
+    const moon = this.hoveredMoon === null ? undefined : this.moons[this.hoveredMoon];
+    const center = moon ? this.layout.notes[moon.note] : undefined;
+    if (moon && center) {
+      const s = this.project(moonPosition(new Vector3(), moon, center, this.time.value).add(new Vector3(0, moon.size * 2, 0)));
+      this.hoverLabel.classList.toggle('hidden', !s.visible);
+      this.hoverLabel.textContent = `${MOON_LABELS[moonKind(moon.name)]}: ${moonName(moon.name)}`;
+      this.hoverLabel.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, -100%)`;
+      return;
     }
     const focus = this.hovered ?? this.selected;
     const note = focus === null ? undefined : this.graph.notes[focus];

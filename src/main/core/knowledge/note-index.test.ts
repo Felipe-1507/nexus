@@ -19,6 +19,7 @@ function note(path: string, links: string[] = [], extra: Partial<NoteMeta> = {})
     codeBlocks: 0,
     images: 0,
     attachments: [],
+    embeds: [],
     ...extra,
   };
 }

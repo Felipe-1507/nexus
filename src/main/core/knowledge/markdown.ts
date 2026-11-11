@@ -18,6 +18,8 @@ export interface ParsedNote {
   images: number;
   /** Outros arquivos incorporados (PDF, áudio...), sem repetição. */
   attachments: string[];
+  /** Todos os arquivos incorporados que não são notas (imagens incluídas), sem repetir: as luas do planeta. */
+  embeds: string[];
 }
 
 const SUMMARY_MAX = 140;
@@ -98,8 +100,10 @@ export function parseNote(content: string, fileName: string): ParsedNote {
   }
   let images = 0;
   const attachments: string[] = [];
+  const files: string[] = [];
   for (const e of embeds) {
     if (!/\.[a-z0-9]{2,5}$/i.test(e) || /\.md$/i.test(e)) continue;
+    files.push(e);
     if (IMAGE_EXT.test(e)) images++;
     else attachments.push(e);
   }
@@ -114,5 +118,6 @@ export function parseNote(content: string, fileName: string): ParsedNote {
     codeBlocks: Math.ceil(fences / 2),
     images,
     attachments: attachments.slice(0, ATTACHMENTS_MAX),
+    embeds: files.slice(0, ATTACHMENTS_MAX),
   };
 }

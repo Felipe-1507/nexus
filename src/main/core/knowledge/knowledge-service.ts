@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { NexusError } from '@shared/ipc-result';
 import type { GalaxyGraph, KnowledgeEvent, Note, NoteLinks, NoteTreeNode } from '@shared/knowledge';
 import type { WatchFn } from '../../fs/watcher';
 import { KNOWLEDGE_DIR, type WorkspaceService } from '../workspaces/workspace-service';
@@ -23,6 +24,10 @@ interface Entry {
   unwatch: (() => void) | null;
 }
 
+/** Arquivos que rodam ao serem abertos: o clique na lua só os mostra na pasta. */
+const EXECUTABLE =
+  /\.(exe|com|bat|cmd|ps1|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|msi|msp|mst|scr|lnk|url|hta|cpl|jar|reg|pif|application|appref-ms|gadget|msc|scf|inf|sct|dll|sys|ws)$/i;
+
 function markStale(entry: Entry): void {
   if (entry.index) entry.previous = entry.index;
   entry.index = null;
@@ -41,6 +46,10 @@ export class KnowledgeService {
       workspaces: WorkspaceService;
       emit: (event: KnowledgeEvent) => void;
       watch?: WatchFn;
+      /** Abre um arquivo no programa padrão do Windows (devolve a mensagem de erro, ou '' se abriu). */
+      open?: (file: string) => Promise<string>;
+      /** Mostra o arquivo selecionado no Explorer. */
+      reveal?: (file: string) => void;
     },
   ) {}
 
@@ -87,6 +96,22 @@ export class KnowledgeService {
   /** Resolve `[[alvo]]` citado na nota `from` para o caminho de uma nota (ou null). */
   async resolveLink(workspaceId: string, target: string, from?: string): Promise<string | null> {
     return (await this.index(workspaceId)).resolve(target, from);
+  }
+
+  /**
+   * Abre (ou mostra na pasta) um arquivo incorporado na nota: a lua do planeta na galáxia. Programas e scripts não são
+   * abertos, só mostrados na pasta: um anexo nunca é executado por um clique.
+   */
+  async openAttachment(workspaceId: string, note: string, name: string, reveal = false): Promise<void> {
+    const file = this.entry(workspaceId).vault.findEmbed(name, note);
+    if (!file) throw new NexusError('NOT_FOUND', `O anexo "${name}" não foi encontrado na pasta de notas.`);
+    if (reveal || EXECUTABLE.test(file)) {
+      if (!this.deps.reveal) throw new NexusError('INTERNAL', 'Não foi possível mostrar o anexo.');
+      this.deps.reveal(file);
+      return;
+    }
+    const error = this.deps.open ? await this.deps.open(file) : 'indisponível';
+    if (error) throw new NexusError('INTERNAL', `Não foi possível abrir o anexo: ${error}`);
   }
 
   /** Descarta o índice para ser refeito no próximo uso (o watcher faz isso sozinho). */

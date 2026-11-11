@@ -64,6 +64,8 @@ export const galaxyGraphSchema = z.object({
       codeBlocks: z.number().int().nonnegative().optional(),
       images: z.number().int().nonnegative().optional(),
       attachments: z.number().int().nonnegative().optional(),
+      /** Nomes dos arquivos incorporados (imagens e anexos), como escritos na nota: as luas do planeta. */
+      moons: z.array(z.string().max(500)).max(30).optional(),
     }),
   ),
   /** Pares de índices em `notes`, sem repetição e sem link para a própria nota. */

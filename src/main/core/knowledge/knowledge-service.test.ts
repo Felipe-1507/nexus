@@ -133,3 +133,34 @@ describe('KnowledgeService', () => {
     }
   });
 });
+
+describe('abrir anexo (lua)', () => {
+  it('abre no programa padrão; programas e scripts só aparecem na pasta; anexo sumido vira erro claro', async () => {
+    const opened: string[] = [];
+    const revealed: string[] = [];
+    const service = new KnowledgeService({
+      workspaces,
+      emit: () => undefined,
+      open: async (f) => {
+        opened.push(f);
+        return '';
+      },
+      reveal: (f) => revealed.push(f),
+    });
+    try {
+      const ws = workspaces.create({ name: 'Anexos', ...base });
+      const dir = service.dir(ws.id);
+      fs.mkdirSync(path.join(dir, 'P'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'P', 'contrato.pdf'), 'x');
+      fs.writeFileSync(path.join(dir, 'P', 'script.bat'), 'echo');
+      await service.openAttachment(ws.id, 'P/Nota.md', 'contrato.pdf');
+      await service.openAttachment(ws.id, 'P/Nota.md', 'script.bat');
+      await service.openAttachment(ws.id, 'P/Nota.md', 'contrato.pdf', true);
+      expect(opened).toEqual([path.join(dir, 'P', 'contrato.pdf')]);
+      expect(revealed).toEqual([path.join(dir, 'P', 'script.bat'), path.join(dir, 'P', 'contrato.pdf')]);
+      await expect(service.openAttachment(ws.id, 'P/Nota.md', 'sumiu.pdf')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    } finally {
+      service.close();
+    }
+  });
+});

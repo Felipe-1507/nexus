@@ -9,6 +9,8 @@ import { isInside, resolveInsideReal } from '../../fs/safe-path';
 /** Tamanho máximo de uma nota editada pelo Nexus. */
 export const NOTE_MAX_BYTES = 2 * 1024 * 1024;
 export const TRASH_DIR = '.trash';
+/** Entradas examinadas no máximo ao procurar um anexo pelo nome (vaults enormes não travam a busca). */
+const EMBED_SEARCH_MAX = 20_000;
 
 export interface NoteFile {
   /** Caminho relativo ao vault, sempre com `/`. */
@@ -160,6 +162,51 @@ export class Vault {
     fs.mkdirSync(trash, { recursive: true });
     const ext = path.extname(source);
     fs.renameSync(source, path.join(trash, this.uniqueName(trash, path.basename(source, ext), ext)));
+  }
+
+  /**
+   * Arquivo incorporado numa nota (`![[contrato.pdf]]`), procurado como no Obsidian: ao lado da nota, a partir da raiz
+   * do vault e, se não estiver em nenhum dos dois, em qualquer pasta (o mais curto vence). Pastas ocultas não entram.
+   * Devolve o caminho absoluto, sempre dentro do vault, ou null.
+   */
+  findEmbed(name: string, fromNote: string): string | null {
+    const clean = name.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    if (!clean || /\.md$/i.test(clean)) return null;
+    const dir = fromNote.includes('/') ? fromNote.slice(0, fromNote.lastIndexOf('/')) : '';
+    for (const rel of dir ? [`${dir}/${clean}`, clean] : [clean]) {
+      const hit = this.fileInside(rel);
+      if (hit) return hit;
+    }
+    const want = clean.toLowerCase();
+    let best: string | null = null;
+    let visited = 0;
+    const walk = (abs: string, rel: string) => {
+      if (visited > EMBED_SEARCH_MAX) return;
+      for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
+        if (e.name.startsWith('.') || ++visited > EMBED_SEARCH_MAX) continue;
+        const childRel = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory()) walk(path.join(abs, e.name), childRel);
+        else if (e.isFile()) {
+          const lower = childRel.toLowerCase();
+          if ((lower === want || lower.endsWith(`/${want}`)) && (!best || childRel.length < best.length)) best = childRel;
+        }
+      }
+    };
+    try {
+      walk(path.resolve(this.root), '');
+    } catch {
+      return null;
+    }
+    return best ? this.fileInside(best) : null;
+  }
+
+  private fileInside(rel: string): string | null {
+    try {
+      const abs = this.abs(rel);
+      return fs.statSync(abs).isFile() ? abs : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Caminho absoluto, garantindo que fica dentro do vault mesmo seguindo links. */

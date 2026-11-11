@@ -454,3 +454,28 @@ test('aparência automática: nota com código vira planeta metálico; a escolha
     removeUserData(userData);
   }
 });
+
+test('luas: anexos incorporados orbitam o planeta e aparecem no cartão; anexo que sumiu avisa', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Luas');
+    write(ws.knowledgeDir, 'Contratos/Fornecedor.md', '# Fornecedor\n![[contrato.pdf]]\n![[foto.png]]\n![[sumiu.pdf]]\n');
+    write(ws.knowledgeDir, 'Contratos/contrato.pdf', 'x');
+    write(ws.knowledgeDir, 'Contratos/foto.png', 'x');
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '1');
+    await expect(canvas).toHaveAttribute('data-moons', '3');
+    const search = page.getByRole('combobox', { name: 'Buscar nota na galáxia' });
+    await search.fill('fornecedor');
+    await search.press('Enter');
+    const moons = page.getByTestId('planet-moons');
+    await expect(moons).toContainText('3 anexos');
+    await expect(moons.getByRole('button', { name: 'contrato.pdf', exact: true })).toBeVisible();
+    await moons.getByRole('button', { name: 'sumiu.pdf', exact: true }).click();
+    await expect(moons.getByRole('alert')).toContainText('não foi encontrado');
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});

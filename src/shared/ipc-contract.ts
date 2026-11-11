@@ -349,6 +349,16 @@ export const ipcContract = {
     input: z.object({ workspaceId: z.uuid(), target: z.string().max(300), from: notePathSchema.optional() }),
     output: z.object({ path: z.string().nullable() }),
   },
+  /** Abre um arquivo incorporado na nota (lua da galáxia) no programa padrão, ou o mostra na pasta. */
+  'knowledge:openAttachment': {
+    input: z.object({
+      workspaceId: z.uuid(),
+      note: notePathSchema,
+      name: z.string().trim().min(1).max(500),
+      reveal: z.boolean().optional(),
+    }),
+    output: z.null(),
+  },
   'settings:setGlobalInstructions': {
     input: z.object({ text: z.string() }),
     output: z.object({ text: z.string() }),
