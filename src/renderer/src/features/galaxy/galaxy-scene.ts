@@ -33,6 +33,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GalaxyGraph } from '@shared/knowledge';
 import { hash01, planetColors, type PlanetStyle } from '@shared/planets';
 import type { GalaxyLayout } from './layout';
+import { createComets, createFlows } from './route-effects';
+import { createShips } from './ship-effects';
+import { createNebulaMaterial, createShootingStars, haloBuffer, seeded, shaderClock, type Effect } from './effects';
 import { AmbientClock, ambientFrameDue, ambientInterval, type Animator } from './ambient';
 import type { GalaxyProfile } from './quality';
 import { createPlanetMaterial, createRingMaterial, kindIndex, RING_INNER, RING_OUTER } from './planet-material';
@@ -78,15 +81,6 @@ const HALO_FRAGMENT = /* glsl */ `
   }
 `;
 
-function seeded(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
-  };
-}
-
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 /**
@@ -125,7 +119,12 @@ export class GalaxyScene {
   private framed = false;
   private disposed = false;
   private profile: GalaxyProfile;
-  private stars: Points;
+  private stars: Points[];
+  /** Tempo dos shaders (rotação dos planetas, deriva da nebulosa) e força do brilho de borda, pelo perfil. */
+  private readonly time = { value: 0 };
+  private readonly rim: { value: number };
+  /** Animações dos efeitos da cena atual (saem do relógio quando a cena é refeita). */
+  private effectRemovers: Array<() => void> = [];
   private styles: PlanetStyle[] = [];
   /** Giro automático da câmera (para quando o usuário mexe nela). É movimento ambiente: segue o limite do perfil. */
   private autoRotate: boolean;
@@ -151,6 +150,7 @@ export class GalaxyScene {
     },
   ) {
     this.profile = options.profile;
+    this.rim = { value: options.profile.rim };
     this.autoRotate = !options.reducedMotion;
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.profile.maxPixelRatio));
@@ -173,7 +173,7 @@ export class GalaxyScene {
     this.camera.add(key);
     this.scene.add(this.camera);
     this.stars = this.backgroundStars();
-    this.scene.add(this.stars);
+    this.scene.add(...this.stars);
     this.scene.add(this.content);
 
     this.haloMaterial = new ShaderMaterial({
@@ -227,11 +227,14 @@ export class GalaxyScene {
     if (profile.quality === this.profile.quality) return;
     this.profile = profile;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
-    this.scene.remove(this.stars);
-    this.stars.geometry.dispose();
-    (this.stars.material as Material).dispose();
+    this.rim.value = profile.rim;
+    for (const layer of this.stars) {
+      this.scene.remove(layer);
+      layer.geometry.dispose();
+      (layer.material as Material).dispose();
+    }
     this.stars = this.backgroundStars();
-    this.scene.add(this.stars);
+    this.scene.add(...this.stars);
     if (this.graph.notes.length > 0) this.setData(this.graph, this.layout, this.styles);
     this.container.dataset.quality = profile.quality;
     this.fit();
@@ -255,6 +258,7 @@ export class GalaxyScene {
     this.buildOrbits();
     this.buildPlanets(styles);
     this.buildRoutes();
+    this.buildEffects();
     const keep = selectedPath ? graph.notes.findIndex((n) => n.path === selectedPath) : -1;
     this.selected = keep >= 0 ? keep : null;
     this.hovered = null;
@@ -330,28 +334,73 @@ export class GalaxyScene {
 
   // ---- construção da cena ----
 
-  private backgroundStars(): Points {
-    const rand = seeded(7);
-    const count = this.profile.backgroundStars;
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const u = rand() * 2 - 1;
-      const phi = rand() * Math.PI * 2;
-      const r = 2200 + rand() * 1500;
-      const s = Math.sqrt(1 - u * u);
-      positions.set([r * s * Math.cos(phi), r * u, r * s * Math.sin(phi)], i * 3);
+  /**
+   * Céu em duas camadas: o fundo distante e uma camada mais próxima, que se desloca mais quando a câmera se mexe
+   * (paralaxe) e dá profundidade.
+   */
+  private backgroundStars(): Points[] {
+    const layer = (
+      seed: number,
+      count: number,
+      near: number,
+      far: number,
+      size: number,
+      opacity: number,
+      color: number,
+    ) => {
+      const rand = seeded(seed);
+      const positions = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const u = rand() * 2 - 1;
+        const phi = rand() * Math.PI * 2;
+        const r = near + rand() * (far - near);
+        const s = Math.sqrt(1 - u * u);
+        positions.set([r * s * Math.cos(phi), r * u, r * s * Math.sin(phi)], i * 3);
+      }
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(positions, 3));
+      const material = new PointsMaterial({
+        color,
+        size,
+        sizeAttenuation: false,
+        transparent: true,
+        opacity,
+        fog: false,
+      });
+      return new Points(geometry, material);
+    };
+    return [
+      layer(7, this.profile.backgroundStars, 2200, 3700, 1.3, 0.7, 0xbfc3e6),
+      layer(13, this.profile.nearStars, 700, 1500, 1.7, 0.45, 0xe6e9ff),
+    ];
+  }
+
+  /** Movimento ambiente da cena atual (nada, com movimento reduzido ou sem notas). */
+  private buildEffects(): void {
+    if (this.options.reducedMotion || this.graph.notes.length === 0) {
+      this.container.dataset.ambient = 'off';
+      return;
     }
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(positions, 3));
-    const material = new PointsMaterial({
-      color: 0xbfc3e6,
-      size: 1.3,
-      sizeAttenuation: false,
-      transparent: true,
-      opacity: 0.7,
-      fog: false,
-    });
-    return new Points(geometry, material);
+    const effects: Effect[] = [
+      { objects: [], animator: shaderClock(this.time) },
+      createShootingStars(() => this.profile, seeded(17)),
+    ];
+    const flows = createFlows(this.graph, this.layout, this.profile, this.haloMaterial);
+    const comets = createComets(this.graph, this.layout, () => this.profile, this.haloMaterial, seeded(23));
+    if (flows) effects.push(flows);
+    if (comets) effects.push(comets);
+    const ships = createShips(this.layout, this.profile, this.haloMaterial, seeded(29));
+    if (ships) effects.push(ships);
+    this.container.dataset.ships = String(ships ? this.profile.limits.ambientShips : 0);
+    this.container.dataset.flows = String(
+      flows ? Math.min(this.graph.links.length, this.profile.limits.flowingRoutes) : 0,
+    );
+    this.container.dataset.comets = String(comets ? this.profile.limits.comets : 0);
+    for (const e of effects) {
+      if (e.objects.length > 0) this.content.add(...e.objects);
+      this.effectRemovers.push(this.ambient.add(e.animator));
+    }
+    this.container.dataset.ambient = 'on';
   }
 
   /** Traço fino de cada órbita no plano do sistema, na cor dele: mostra de onde cada planeta gira em volta da estrela. */
@@ -421,6 +470,7 @@ export class GalaxyScene {
   /** Poeira luminosa em volta de cada sistema: de longe, é ela que faz o conjunto parecer uma galáxia. */
   private nebula(): Points {
     const rand = seeded(11);
+    const material = createNebulaMaterial(this.haloMaterial.uniforms.scale as { value: number }, this.time);
     const density = this.profile.nebulaDensity;
     const per = this.layout.systems.map((s) => Math.round(Math.min(400, 60 + s.count * 8) * density));
     const halo = this.haloPoints(per.reduce((a, b) => a + b, 0));
@@ -436,6 +486,7 @@ export class GalaxyScene {
         halo.set(k++, p, color, 6 + rand() * 10, 0.035 + rand() * 0.05);
       }
     });
+    halo.points.material = material;
     return halo.points;
   }
 
@@ -454,7 +505,7 @@ export class GalaxyScene {
     geometry.setAttribute('aAtmo', new InstancedBufferAttribute(atmo, 4));
     geometry.setAttribute('aGlow', new InstancedBufferAttribute(glow, 1));
 
-    const mesh = new InstancedMesh(geometry, createPlanetMaterial(), Math.max(1, n));
+    const mesh = new InstancedMesh(geometry, createPlanetMaterial(this.time, this.rim), Math.max(1, n));
     mesh.count = n;
     const m = new Matrix4();
     const c = new Color();
@@ -551,28 +602,12 @@ export class GalaxyScene {
   }
 
   private haloPoints(count: number) {
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
-    const alphas = new Float32Array(count);
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new BufferAttribute(colors, 3));
-    geometry.setAttribute('size', new BufferAttribute(sizes, 1));
-    geometry.setAttribute('alpha', new BufferAttribute(alphas, 1));
-    const points = new Points(geometry, this.haloMaterial);
-    return {
-      points,
-      set(i: number, p: { x: number; y: number; z: number }, color: Color, size: number, alpha: number) {
-        positions.set([p.x, p.y, p.z], i * 3);
-        colors.set([color.r, color.g, color.b], i * 3);
-        sizes[i] = size;
-        alphas[i] = alpha;
-      },
-    };
+    return haloBuffer(count, this.haloMaterial);
   }
 
   private clearContent(): void {
+    for (const remove of this.effectRemovers) remove();
+    this.effectRemovers = [];
     for (const child of [...this.content.children]) {
       this.content.remove(child);
       const o = child as Mesh;
@@ -701,7 +736,7 @@ export class GalaxyScene {
     const animating = this.autoRotate || this.ambient.size > 0;
     const interval = animating
       ? ambientInterval({
-          fps: this.profile.ambientFps,
+          fps: this.autoRotate || this.ambient.fast ? this.profile.ambientFps : this.profile.idleFps,
           unfocusedFps: this.profile.unfocusedFps,
           focused: document.hasFocus(),
           reducedMotion: this.options.reducedMotion,

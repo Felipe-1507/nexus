@@ -7,6 +7,8 @@
 /** Algo que se anima sozinho. `update` devolve `false` quando terminou (e sai da lista). */
 export interface Animator {
   update(dtSeconds: number, now: number): boolean;
+  /** Movimento rápido no momento (ex.: estrela cadente passando): pede o ritmo cheio do perfil, não o lento. */
+  readonly fast?: boolean;
 }
 
 export interface AmbientState {
@@ -41,6 +43,12 @@ export class AmbientClock {
 
   get size(): number {
     return this.animators.size;
+  }
+
+  /** Alguma animação rápida em andamento. */
+  get fast(): boolean {
+    for (const a of this.animators) if (a.fast) return true;
+    return false;
   }
 
   /** Avança todas as animações; as que terminaram saem. */

@@ -16,6 +16,7 @@ const PLANET_VERTEX = /* glsl */ `
   attribute vec4 aParams; // x: tipo, y: semente, z: força das faixas, w: escala do ruído
   attribute vec4 aAtmo;   // rgb: cor do brilho, a: força da atmosfera (0 = sem)
   attribute float aGlow;  // 0 a 1: nota mexida recentemente
+  uniform float uTime;
   varying vec3 vObj;
   varying vec3 vN;
   varying vec3 vV;
@@ -25,7 +26,12 @@ const PLANET_VERTEX = /* glsl */ `
   varying vec4 vAt;
   varying float vGlow;
   void main() {
-    vObj = position;
+    // Rotação: a superfície gira em volta do eixo do planeta (a luz fica parada), cada um no seu ritmo e sentido.
+    float speed = (0.05 + 0.1 * fract(aParams.y * 0.0137)) * (fract(aParams.y * 0.071) < 0.2 ? -1.0 : 1.0);
+    float ang = uTime * speed;
+    float cs = cos(ang);
+    float sn = sin(ang);
+    vObj = vec3(cs * position.x + sn * position.z, position.y, -sn * position.x + cs * position.z);
     vA = aColorA; vB = aColorB; vP = aParams; vAt = aAtmo; vGlow = aGlow;
     vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
     vN = normalize(mat3(modelViewMatrix) * mat3(instanceMatrix) * normal);
@@ -44,6 +50,7 @@ const PLANET_FRAGMENT = /* glsl */ `
   varying vec4 vP;
   varying vec4 vAt;
   varying float vGlow;
+  uniform float uRim;
 
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
@@ -115,14 +122,21 @@ const PLANET_FRAGMENT = /* glsl */ `
     vec3 outc = col * light + col * emissive;
     outc += vec3(spec * pow(max(dot(reflect(-L, N), V), 0.0), 24.0)) * 0.5;
     outc += vAt.rgb * rim * vAt.a * (0.35 + 0.9 * diff);   // atmosfera: brilho na borda
+    // Fresnel discreto em todos os planetas: a borda iluminada destaca o volume contra o fundo escuro.
+    outc += mix(col, vec3(0.75, 0.85, 1.0), 0.5) * rim * uRim * 0.35 * (0.3 + 0.7 * diff);
     outc += col * 0.35 * vGlow;                            // nota recente
     gl_FragColor = vec4(outc, 1.0);
     #include <colorspace_fragment>
   }
 `;
 
-export function createPlanetMaterial(): ShaderMaterial {
-  return new ShaderMaterial({ vertexShader: PLANET_VERTEX, fragmentShader: PLANET_FRAGMENT });
+/** `time` e `rim` são compartilhados com a cena: o relógio ambiente avança um e o perfil de qualidade define o outro. */
+export function createPlanetMaterial(time: { value: number }, rim: { value: number }): ShaderMaterial {
+  return new ShaderMaterial({
+    vertexShader: PLANET_VERTEX,
+    fragmentShader: PLANET_FRAGMENT,
+    uniforms: { uTime: time, uRim: rim },
+  });
 }
 
 /** Raio interno e externo do anel, em raios do planeta. */

@@ -45,6 +45,9 @@ test('galáxia do vault: sistemas, rotas, busca, clique abre a nota e atualizaç
     await expect(canvas).toHaveAttribute('data-routes', '3');
     await expect(canvas).toHaveAttribute('data-systems', '3');
     await expect(page.getByTestId('galaxy-stats')).toHaveText('4 notas · 3 rotas');
+    // Fluxo de luz nas 3 rotas e cometas entre sistemas (há links entre sistemas diferentes); Leve: 1 cometa por vez.
+    await expect(canvas).toHaveAttribute('data-flows', '3');
+    await expect(canvas).toHaveAttribute('data-comets', '1');
 
     // Busca sem acento leva a câmera até o planeta.
     const search = page.getByRole('combobox', { name: 'Buscar nota na galáxia' });
@@ -126,8 +129,11 @@ test('modos Leve e Original: troca nas Configurações vale na hora, sem mexer n
     await panel.getByRole('tab', { name: 'Galáxia' }).click();
     const canvas = panel.getByTestId('galaxy-canvas');
     await expect(canvas).toHaveAttribute('data-planets', '2');
-    // O Leve é o padrão.
+    // O Leve é o padrão, e o movimento ambiente (rotação, nebulosa, estrelas cadentes) está ligado.
     await expect(canvas).toHaveAttribute('data-quality', 'leve');
+    await expect(canvas).toHaveAttribute('data-ambient', 'on');
+    // Naves ambientais: 2 no Leve, 6 no Original.
+    await expect(canvas).toHaveAttribute('data-ships', '2');
 
     // No Leve, o giro automático fica em no máximo 30 quadros por segundo (com folga para o relógio do teste).
     const frames = async () => Number((await canvas.getAttribute('data-frames')) ?? '0');
@@ -152,6 +158,7 @@ test('modos Leve e Original: troca nas Configurações vale na hora, sem mexer n
     await modes.getByRole('radio', { name: /Original/ }).click();
     await expect(modes.getByRole('radio', { name: /Original/ })).toHaveAttribute('aria-checked', 'true');
     await expect(canvas).toHaveAttribute('data-quality', 'original');
+    await expect(canvas).toHaveAttribute('data-ships', '6');
     await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
     await expect(canvas).toHaveAttribute('data-planets', '2');
 
@@ -320,6 +327,29 @@ test('desempenho: um vault de 1.200 notas abre rápido e a navegação continua 
     await search.fill('nota 777');
     await search.press('Enter');
     await expect(canvas).toHaveAttribute('data-selected', 'Pasta 9/Nota 777.md');
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
+test('movimento reduzido: sem movimento ambiente, a galáxia só desenha quando algo muda', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const ws = await createWorkspace(page, 'Quieta');
+    write(ws.knowledgeDir, 'Ideias/Roteiro.md', '# Roteiro\nVer [[Agenda]].\n');
+    write(ws.knowledgeDir, 'Ideias/Agenda.md', '# Agenda\n');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '2');
+    await expect(canvas).toHaveAttribute('data-ambient', 'off');
+    const frames = async () => Number((await canvas.getAttribute('data-frames')) ?? '0');
+    await page.waitForTimeout(1500);
+    const before = await frames();
+    await page.waitForTimeout(2500);
+    expect((await frames()) - before).toBeLessThanOrEqual(2);
   } finally {
     await app.close();
     removeUserData(userData);

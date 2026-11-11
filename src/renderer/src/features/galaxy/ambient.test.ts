@@ -69,3 +69,26 @@ describe('movimento ambiente', () => {
       expect(l.limits[k]).toBeLessThanOrEqual(o.limits[k]);
   });
 });
+
+describe('ritmo do movimento', () => {
+  it('o relógio sabe quando há movimento rápido (para pedir o ritmo cheio do perfil)', () => {
+    const clock = new AmbientClock();
+    let fast = false;
+    clock.add({ update: () => true });
+    clock.add({
+      get fast() {
+        return fast;
+      },
+      update: () => true,
+    });
+    expect(clock.fast).toBe(false);
+    fast = true;
+    expect(clock.fast).toBe(true);
+  });
+
+  it('movimento lento no Leve fica abaixo do rápido', () => {
+    expect(GALAXY_PROFILES.leve.idleFps).toBeLessThan(GALAXY_PROFILES.leve.ambientFps);
+    expect(GALAXY_PROFILES.leve.nearStars).toBeLessThan(GALAXY_PROFILES.original.nearStars);
+    expect(GALAXY_PROFILES.leve.shootingStarEverySec).toBeGreaterThan(GALAXY_PROFILES.original.shootingStarEverySec);
+  });
+});
