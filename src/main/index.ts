@@ -125,7 +125,12 @@ function bootstrap(): void {
   });
 
   const isTrusted = createOriginGuard([devServerOrigin ?? APP_ORIGIN]);
-  app.on('web-contents-created', (_event, contents) => hardenWebContents(contents, isTrusted));
+  // Nos testes (NEXUS_NO_EXTERNAL), links externos só vão para o log: o navegador de quem roda os testes não abre.
+  const openExternal =
+    !app.isPackaged && process.env.NEXUS_NO_EXTERNAL === '1'
+      ? (url: string) => log.info(`[teste] abriria no navegador: ${url}`)
+      : undefined;
+  app.on('web-contents-created', (_event, contents) => hardenWebContents(contents, isTrusted, openExternal));
   applySessionSecurity(session.defaultSession, devServerOrigin);
   if (!devServerUrl) {
     handleAppProtocol(fileURLToPath(new URL('../renderer', import.meta.url)), {

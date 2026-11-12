@@ -1,16 +1,24 @@
 import { shell, type Session, type WebContents } from 'electron';
 import { buildCsp } from './csp';
 
-function openExternalSafely(url: string): void {
-  try {
-    if (new URL(url).protocol === 'https:') void shell.openExternal(url);
-  } catch {
-    // URL malformada: ignora.
-  }
-}
+const defaultOpen = (url: string) => void shell.openExternal(url);
 
-/** Bloqueia navegação, novas janelas e webviews. Links https externos abrem no navegador padrão. */
-export function hardenWebContents(contents: WebContents, isTrustedUrl: (url: string) => boolean): void {
+/**
+ * Bloqueia navegação, novas janelas e webviews. Links https externos abrem no navegador padrão (`open`; nos testes,
+ * um substituto que só registra, para nenhum teste abrir o navegador de quem roda).
+ */
+export function hardenWebContents(
+  contents: WebContents,
+  isTrustedUrl: (url: string) => boolean,
+  open: (url: string) => void = defaultOpen,
+): void {
+  const openExternalSafely = (url: string) => {
+    try {
+      if (new URL(url).protocol === 'https:') open(url);
+    } catch {
+      // URL malformada: ignora.
+    }
+  };
   contents.on('will-navigate', (event, url) => {
     if (!isTrustedUrl(url)) {
       event.preventDefault();

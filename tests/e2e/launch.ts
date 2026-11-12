@@ -51,6 +51,8 @@ export async function launchApp(userData = tempUserData(), options: LaunchOption
   if (options.claude !== 'real') env.NEXUS_CLAUDE_CLI = path.join(userData, 'sem-claude', 'claude.exe');
   // Os botões de instalar e entrar só registram no log o que abririam: nenhum teste instala nada nem abre console.
   env.NEXUS_SIMULATE_CONSOLE = '1';
+  // Links externos (ex.: o teste que tenta navegar para fora do app) não abrem o navegador de verdade.
+  env.NEXUS_NO_EXTERNAL = '1';
   // A abertura animada atrasaria cada teste em 2 s e seria a primeira janela: só o teste dela a liga.
   env.NEXUS_NO_SPLASH = '1';
   const app = await electron.launch({
