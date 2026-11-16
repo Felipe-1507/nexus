@@ -62,6 +62,7 @@ import { loadPreferences } from './platform/preferences';
 import { PreferencesStore } from './platform/preferences-store';
 import { runFile } from './platform/run';
 import { createWatcher } from './fs/watcher';
+import { createBackgroundMode, type BackgroundMode } from './window/background';
 import { createMainWindow } from './window/main-window';
 import { introVideoPage, openSplash, type Splash } from './window/splash';
 import { createOriginGuard } from './window/origin';
@@ -99,6 +100,7 @@ let broker: PermissionBroker | undefined;
 let knowledge: KnowledgeService | undefined;
 let codeWatcher: CodeWatcher | undefined;
 let mainWindow: BrowserWindow | undefined;
+let background: BackgroundMode | undefined;
 
 function bootstrap(): void {
   const userData = app.getPath('userData');
@@ -404,7 +406,44 @@ function bootstrap(): void {
     ),
   );
 
+  // Segundo plano: fechar a janela só a esconde; o ícone da barra de notificação reabre ou fecha de verdade.
+  background = createBackgroundMode({
+    iconPath: trayIconPath(),
+    productName: BRAND.productName,
+    runningCount: () => sessions?.runningCount() ?? 0,
+    confirm: (options) => dialog.showMessageBox(options),
+    quit: () => app.quit(),
+    showWindow: showMainWindow,
+  });
+  // Os testes de ponta a ponta acionam o menu do ícone por aqui (não dá para clicar na bandeja). Nunca vale no app instalado.
+  if (!app.isPackaged && process.env.NEXUS_NO_SPLASH === '1') {
+    (globalThis as { __nexusBackground?: unknown }).__nexusBackground = {
+      requestQuit: () => background?.requestQuit(),
+      showWindow: showMainWindow,
+    };
+  }
+
   openWindow(splash);
+}
+
+/** Traz a janela principal de volta (do segundo plano, minimizada ou atrás de outras). Não mexe na abertura animada. */
+function showMainWindow(): void {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) {
+    // A janela se perdeu (a interface caiu de vez): abre outra.
+    if (app.isReady() && background) openWindow(null);
+    return;
+  }
+  if (!win.isVisible() && !background?.isHidden()) return; // ainda abrindo
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+/** Ícone do aplicativo para a barra de notificação: o do pacote instalado, ou o do repositório em desenvolvimento. */
+function trayIconPath(): string {
+  if (app.isPackaged) return path.join(process.resourcesPath, 'icon.png');
+  return BRAND.icon ?? path.join(app.getAppPath(), 'build', 'icon.png');
 }
 
 function openWindow(splash: Splash | null): void {
@@ -415,20 +454,15 @@ function openWindow(splash: Splash | null): void {
     ...(splash ? { reveal: (show: () => void) => splash.finish(show) } : {}),
   });
   mainWindow = win;
+  background?.attach(win);
   watchWindowHealth(win, { log, showMessageBox: (w, options) => dialog.showMessageBox(w, options) });
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    // A janela principal (não a abertura, que pode ainda estar na tela).
-    const win = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : undefined;
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
-  });
+  // Abrir o Nexus de novo (atalho, menu Iniciar) com ele em segundo plano traz a janela de volta.
+  app.on('second-instance', () => showMainWindow());
 
   app
     .whenReady()
@@ -442,6 +476,7 @@ if (!app.requestSingleInstanceLock()) {
       app.exit(1);
     });
 
+  app.on('before-quit', () => background?.markQuitting());
   app.on('window-all-closed', () => app.quit());
   app.on('will-quit', () => {
     // Antes de fechar o banco: pedidos de permissão são negados, respostas em andamento são gravadas como
@@ -450,6 +485,7 @@ if (!app.requestSingleInstanceLock()) {
     sessions?.closeAll();
     knowledge?.close();
     codeWatcher?.close();
+    background?.dispose();
     database?.db.close();
   });
 }

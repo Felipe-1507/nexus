@@ -115,6 +115,13 @@ export class SessionManager {
     return Boolean(this.sessions.get(conversationId)?.turn);
   }
 
+  /** Quantas respostas estão em andamento agora (todas as conversas). */
+  runningCount(): number {
+    let n = 0;
+    for (const s of this.sessions.values()) if (s.turn) n++;
+    return n;
+  }
+
   /** Há um processo do Claude Code aberto para a conversa (parado ou respondendo). */
   hasSession(conversationId: string): boolean {
     return this.sessions.has(conversationId);

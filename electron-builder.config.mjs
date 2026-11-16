@@ -26,7 +26,11 @@ export default {
     '!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**',
   ],
   // Vídeo da abertura: fora do ASAR, para a janela de abertura carregá-lo por caminho de arquivo.
-  extraResources: [{ from: 'build/intro', to: 'intro' }],
+  // O ícone do app também vai solto, para a barra de notificação (o ícone do executável não dá para carregar de lá).
+  extraResources: [
+    { from: 'build/intro', to: 'intro' },
+    { from: branding.icon ?? DEFAULT_ICON, to: 'icon.png' },
+  ],
   asar: true,
   // Traduções do Chromium (menus de contexto, diálogos nativos): só as que o app usa.
   electronLanguages: ['pt-BR', 'en-US'],
