@@ -18,7 +18,7 @@ export function TitleBar({ sidebarVisible, rightVisible }: { sidebarVisible: boo
       </IconButton>
       <div className="flex items-center gap-2 px-2">
         {BRAND.logo ? (
-          <img src={BRAND.logo} alt="" className="h-4 w-auto" />
+          <img src={BRAND.logo} alt="" className="size-5 object-contain" />
         ) : (
           <span className="size-2 rounded-full bg-accent shadow-[0_0_10px_var(--accent)]" />
         )}

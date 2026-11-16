@@ -19,6 +19,7 @@ export interface Branding {
 export const LOCAL_BRANDING_DIR: string;
 export const LOCAL_BRANDING_FILE: string;
 export const DEFAULT_ICON: string;
+export const DEFAULT_LOGO: string;
 export const DEFAULT_BRANDING: Readonly<Branding>;
 export const THEME_TOKENS: readonly string[];
 export function loadBranding(where?: { dir?: string; file?: string }): Branding;

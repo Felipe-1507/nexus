@@ -71,7 +71,8 @@ describe('disposição da galáxia', () => {
         expect(distance(notes[i]!, notes[j]!)).toBeGreaterThan(
           footprint(notes[i]!.size) + footprint(notes[j]!.size) - 0.01,
         );
-  });
+    // 80 mil comparações com expect: passa de 5 s com a máquina ocupada (testes de ponta a ponta rodando ao lado).
+  }, 30_000);
 
   it('a posição é estável: a mesma nota fica no mesmo lugar quando o vault não muda', () => {
     const g = graph(['A/x.md', 'A/y.md', 'B/z.md']);

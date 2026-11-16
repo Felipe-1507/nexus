@@ -18,8 +18,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export const LOCAL_BRANDING_DIR = path.join(root, 'branding.local');
 export const LOCAL_BRANDING_FILE = path.join(root, 'branding.local.json');
-/** Ícone padrão, genérico, versionado no repositório. */
+/** Ícone padrão do Nexus, versionado no repositório. */
 export const DEFAULT_ICON = path.join(root, 'build', 'icon.png');
+/** Logo padrão do Nexus (PNG transparente pequeno), mostrada na barra de título e na tela inicial. */
+export const DEFAULT_LOGO = path.join(root, 'build', 'logo.png');
 
 /** @type {import('./branding.mjs').Branding} */
 export const DEFAULT_BRANDING = Object.freeze({
@@ -103,6 +105,8 @@ function checkTheme(raw, problems) {
   return theme;
 }
 
+const pngDataUrl = (file) => `data:image/png;base64,${fs.readFileSync(file).toString('base64')}`;
+
 function readLogo(dir, problems) {
   for (const [file, mime] of [
     ['logo.svg', 'image/svg+xml'],
@@ -159,7 +163,8 @@ export function loadBranding({ dir = LOCAL_BRANDING_DIR, file = LOCAL_BRANDING_F
   } else if (fs.existsSync(file)) {
     branding = { ...DEFAULT_BRANDING, ...checkIdentity(readJson(file), problems) };
   } else {
-    return DEFAULT_BRANDING;
+    // Sem marca local: o Nexus com a logo dele. Outra marca (pasta ou arquivo local) nunca herda esta logo.
+    return { ...DEFAULT_BRANDING, logo: fs.existsSync(DEFAULT_LOGO) ? pngDataUrl(DEFAULT_LOGO) : null };
   }
   if (problems.length) throw new Error(`Marca local inválida: ${problems.join('; ')}.`);
   return branding;

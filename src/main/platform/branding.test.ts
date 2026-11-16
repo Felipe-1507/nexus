@@ -34,15 +34,18 @@ function png(width: number, height: number): Buffer {
 }
 
 describe('marca do app', () => {
-  it('sem nada local, o app se chama "Nexus", sem autor, cores, logo nem ícone próprios', () => {
-    expect(loadBranding(where())).toEqual({
+  it('sem nada local, o app se chama "Nexus", com a logo dele e sem autor, cores nem ícone próprios', () => {
+    const b = loadBranding(where());
+    expect(b).toEqual({
       productName: 'Nexus',
       appId: 'local.nexus.app',
       author: null,
       theme: null,
-      logo: null,
+      logo: expect.stringMatching(/^data:image\/png;base64,/),
       icon: null,
     });
+    // A logo padrão é pequena (vai embutida no app) e é um PNG de verdade.
+    expect(b.logo!.length).toBeLessThan(60_000);
   });
 
   it('a pasta local traz nome, cores, logo e ícone', () => {
@@ -64,7 +67,13 @@ describe('marca do app', () => {
 
   it('só o nome também pode vir do arquivo branding.local.json', () => {
     fs.writeFileSync(file, JSON.stringify({ productName: 'Outro' }));
-    expect(loadBranding(where())).toMatchObject({ productName: 'Outro', appId: 'local.nexus.app', theme: null });
+    // Outra marca nunca herda a logo do Nexus.
+    expect(loadBranding(where())).toMatchObject({
+      productName: 'Outro',
+      appId: 'local.nexus.app',
+      theme: null,
+      logo: null,
+    });
   });
 
   it.each([
