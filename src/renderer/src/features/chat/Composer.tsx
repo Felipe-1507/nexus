@@ -4,6 +4,7 @@ import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_PER_MESSAGE, ATTACHMENT_MIMES, typ
 import { cn } from '@renderer/lib/cn';
 import { invoke } from '@renderer/lib/ipc';
 import { AttachmentChip } from './AttachmentChip';
+import { readDraft, writeDraft } from './draft';
 
 interface ComposerProps {
   placeholder: string;
@@ -22,27 +23,6 @@ interface ComposerProps {
   footer?: ReactNode;
 }
 
-const DRAFT_PREFIX = 'nexus.draft.';
-
-function readDraft(key?: string): string {
-  if (!key) return '';
-  try {
-    return localStorage.getItem(DRAFT_PREFIX + key) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function writeDraft(key: string | undefined, text: string): void {
-  if (!key) return;
-  try {
-    if (text) localStorage.setItem(DRAFT_PREFIX + key, text);
-    else localStorage.removeItem(DRAFT_PREFIX + key);
-  } catch {
-    // armazenamento indisponível: o rascunho só não sobrevive
-  }
-}
-
 /** Campo de mensagem: Enter envia, Shift+Enter quebra linha. Durante a resposta, o botão vira "Parar". */
 export function Composer({
   placeholder,
@@ -56,18 +36,32 @@ export function Composer({
   prefill,
   draftKey,
 }: ComposerProps) {
-  const [text, setText] = useState(() => readDraft(draftKey));
+  const initial = useState(() => readDraft(draftKey))[0];
+  const [text, setText] = useState(initial.text);
+  const [attachments, setAttachments] = useState<Array<Attachment & { thumb?: string | null }>>(initial.attachments);
   const loadedKey = useRef(draftKey);
   useEffect(() => {
     if (loadedKey.current === draftKey) return;
     loadedKey.current = draftKey;
-    setText(readDraft(draftKey));
+    const next = readDraft(draftKey);
+    setText(next.text);
+    setAttachments(next.attachments);
   }, [draftKey]);
+  // Texto e anexos ainda não enviados ficam guardados: sobrevivem a sair do projeto e voltar, e a fechar o app.
+  // Ao trocar de conversa, o rascunho novo (lido acima) é que vai para a chave nova, nunca o antigo.
+  const latest = useRef({ key: draftKey, text, attachments });
+  latest.current = { key: loadedKey.current, text, attachments };
   useEffect(() => {
-    writeDraft(draftKey, text);
-    // Só o texto dispara a gravação: ao trocar de conversa, o texto novo (lido acima) é que vai para a chave nova.
-  }, [text]);
-  const [attachments, setAttachments] = useState<Array<Attachment & { thumb?: string | null }>>([]);
+    writeDraft(loadedKey.current, { text, attachments });
+  }, [text, attachments]);
+  // Ao sair da tela (trocar de projeto, de aba ou de Workspace), grava o que está no campo uma última vez.
+  useEffect(
+    () => () => {
+      const { key, text: t, attachments: a } = latest.current;
+      writeDraft(key, { text: t, attachments: a });
+    },
+    [],
+  );
   const [uploading, setUploading] = useState(0);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);

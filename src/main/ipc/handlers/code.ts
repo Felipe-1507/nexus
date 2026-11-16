@@ -1,5 +1,6 @@
 import type { ChatService } from '../../core/chat/chat-service';
 import type { CodeService } from '../../core/code/code-service';
+import type { CodeWatcher } from '../../core/code/code-watcher';
 import type { FileOpener } from '../../core/code/file-opener';
 import type { IpcHandlers } from '../dispatcher';
 
@@ -17,12 +18,14 @@ type CodeHandlers = Pick<
   | 'code:copy'
   | 'code:rename'
   | 'code:reveal'
+  | 'code:watch'
 >;
 
 export function codeHandlers(deps: {
   code: CodeService;
   files: FileOpener;
   chat: ChatService;
+  watcher: Pick<CodeWatcher, 'set'>;
   /** Abre um endereço `vscode://` já validado pelo CodeService. */
   openUrl: (url: string) => Promise<void>;
 }): CodeHandlers {
@@ -50,6 +53,10 @@ export function codeHandlers(deps: {
     'code:rename': (i) => code.rename(scope(i), i.path, i.name),
     'code:reveal': async (i) => {
       await code.reveal(scope(i), i.path);
+      return null;
+    },
+    'code:watch': async (i) => {
+      await deps.watcher.set(scope(i), i.dirs);
       return null;
     },
     'code:relative': async (i) => ({ path: await code.relativeTo(scope(i), i.absolute) }),

@@ -19,7 +19,7 @@ import {
   continueInputSchema,
   continueResultSchema,
 } from './context';
-import { codeEntrySchema, codeFileSchema, codeScopeSchema, fileChangeSchema } from './code';
+import { CODE_WATCH_MAX_DIRS, codeEntrySchema, codeFileSchema, codeScopeSchema, fileChangeSchema } from './code';
 import {
   galaxyGraphSchema,
   noteLinksSchema,
@@ -265,6 +265,14 @@ export const ipcContract = {
       expectedMtimeMs: z.number(),
     }),
     output: z.object({ mtimeMs: z.number() }),
+  },
+  /**
+   * Passa a observar as pastas abertas na árvore de arquivos (só elas, só a lista de cada uma): mudanças feitas por fora,
+   * como copiar algo no Explorer, chegam como `code:event`. Lista vazia = parar de observar este escopo.
+   */
+  'code:watch': {
+    input: codeScopeSchema.extend({ dirs: z.array(z.string().max(1000)).max(CODE_WATCH_MAX_DIRS) }),
+    output: z.null(),
   },
   'code:openInVsCode': { input: codeScopeSchema.extend({ path: z.string().max(1000) }), output: z.null() },
   'code:changes': { input: z.object({ messageId: z.uuid() }), output: z.array(fileChangeSchema) },

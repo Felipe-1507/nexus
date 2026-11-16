@@ -6,7 +6,15 @@ import { Dialog } from '@renderer/components/ui/Dialog';
 import { IconButton } from '@renderer/components/ui/IconButton';
 import { useLayout } from '@renderer/app/shell/layout-store';
 import { cn } from '@renderer/lib/cn';
-import { useCodeList, useCopyEntries, useDeleteEntry, useImportPaths, useRenameEntry, useRevealEntry } from './queries';
+import {
+  useCodeList,
+  useCodeTreeSync,
+  useCopyEntries,
+  useDeleteEntry,
+  useImportPaths,
+  useRenameEntry,
+  useRevealEntry,
+} from './queries';
 
 interface Selected {
   path: string;
@@ -52,6 +60,7 @@ export function FileTree({ scope }: { scope: CodeScope }) {
   const [toRename, setToRename] = useState<Item | null>(null);
   const [newName, setNewName] = useState('');
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  useCodeTreeSync(scope, [...open]);
   const importPaths = useImportPaths(scope);
   const copyEntries = useCopyEntries(scope);
   const renameEntry = useRenameEntry(scope);

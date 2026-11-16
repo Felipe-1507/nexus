@@ -35,4 +35,17 @@ export type CodeFile = z.infer<typeof codeFileSchema>;
 export const codeScopeSchema = z.object({ workspaceId: z.uuid(), projectId: z.uuid().nullable() });
 export type CodeScope = z.infer<typeof codeScopeSchema>;
 
+/** Evento do main quando o conteúdo de pastas abertas na árvore muda (um arquivo ou pasta entrou, saiu ou foi renomeado). */
+export interface CodeEvent {
+  workspaceId: string;
+  projectId: string | null;
+  /** Pastas (relativas à raiz do escopo, com `/`; '' = a raiz) cuja lista mudou. */
+  dirs: string[];
+}
+
+export const CODE_EVENT_CHANNEL = 'code:event';
+
+/** Máximo de pastas observadas ao mesmo tempo (as abertas na árvore). */
+export const CODE_WATCH_MAX_DIRS = 300;
+
 export const CODE_FILE_MAX_BYTES = 2 * 1024 * 1024;

@@ -248,3 +248,32 @@ test.describe('com o Claude Code real', () => {
     }
   });
 });
+
+test('árvore em dia com o disco: o que entra ou sai pelo Explorer aparece sozinho, sem sair do projeto', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Ao vivo');
+    fs.mkdirSync(path.join(ws.rootPath, 'src'));
+    fs.writeFileSync(path.join(ws.rootPath, 'src', 'a.ts'), 'x');
+    await page.reload();
+    await page.getByTestId('chat-view').waitFor();
+    const tree = page.getByTestId('folder-section').getByRole('tree', { name: 'Arquivos' });
+    await tree.getByRole('button', { name: 'src', exact: true }).click();
+    await expect(tree.getByRole('button', { name: 'a.ts', exact: true })).toBeVisible();
+
+    // Arquivo novo na raiz e dentro da pasta aberta: aparecem sem recarregar nem mudar de tela.
+    fs.writeFileSync(path.join(ws.rootPath, 'novo.txt'), 'x');
+    fs.writeFileSync(path.join(ws.rootPath, 'src', 'b.ts'), 'x');
+    fs.mkdirSync(path.join(ws.rootPath, 'pasta-nova'));
+    await expect(tree.getByRole('button', { name: 'novo.txt', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(tree.getByRole('button', { name: 'b.ts', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(tree.getByRole('button', { name: 'pasta-nova', exact: true })).toBeVisible({ timeout: 10_000 });
+
+    // E o que sai também some.
+    fs.rmSync(path.join(ws.rootPath, 'src', 'a.ts'));
+    await expect(tree.getByRole('button', { name: 'a.ts', exact: true })).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});

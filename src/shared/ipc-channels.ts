@@ -98,6 +98,7 @@ export const IPC_CHANNELS = [
   'code:copy',
   'code:rename',
   'code:reveal',
+  'code:watch',
 ] as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number];
@@ -107,7 +108,7 @@ export function isIpcChannel(value: unknown): value is IpcChannel {
 }
 
 /** Canais de eventos do main para a tela (a tela só escuta, não envia). */
-export const EVENT_CHANNELS = ['chat:event', 'knowledge:event'] as const;
+export const EVENT_CHANNELS = ['chat:event', 'knowledge:event', 'code:event'] as const;
 export type EventChannel = (typeof EVENT_CHANNELS)[number];
 
 export function isEventChannel(value: unknown): value is EventChannel {

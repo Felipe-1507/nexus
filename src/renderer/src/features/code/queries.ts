@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CodeScope } from '@shared/code';
+import { useEffect } from 'react';
+import { CODE_EVENT_CHANNEL, type CodeEvent, type CodeScope } from '@shared/code';
 import { invoke } from '@renderer/lib/ipc';
 
 export const codeKeys = {
@@ -14,6 +15,42 @@ export function useCodeList(scope: CodeScope, dir: string, enabled = true) {
     queryFn: () => invoke('code:list', { ...scope, dir }),
     enabled,
   });
+}
+
+/**
+ * Mantém a árvore de arquivos em dia com o disco: observa as pastas abertas (copiar algo pelo Explorer, o Claude criando
+ * arquivos, outro programa) e relê só a pasta que mudou. Ao voltar para a janela, relê as abertas, o que cobre também as
+ * pastas de rede, onde o sistema nem sempre avisa.
+ */
+export function useCodeTreeSync(scope: CodeScope, openDirs: string[]): void {
+  const queryClient = useQueryClient();
+  const { workspaceId, projectId } = scope;
+  // Chave estável: o efeito só roda quando o conjunto de pastas abertas muda de verdade.
+  const dirsKey = JSON.stringify([...openDirs].sort());
+
+  useEffect(() => {
+    const dirs = JSON.parse(dirsKey) as string[];
+    void invoke('code:watch', { workspaceId, projectId, dirs: ['', ...dirs] }).catch(() => undefined);
+    return () => {
+      void invoke('code:watch', { workspaceId, projectId, dirs: [] }).catch(() => undefined);
+    };
+  }, [workspaceId, projectId, dirsKey]);
+
+  useEffect(() => {
+    const off = window.nexus.on(CODE_EVENT_CHANNEL, (payload) => {
+      const event = payload as CodeEvent;
+      if (event.workspaceId !== workspaceId || event.projectId !== projectId) return;
+      for (const dir of event.dirs)
+        void queryClient.invalidateQueries({ queryKey: codeKeys.list({ workspaceId, projectId }, dir) });
+    });
+    const onFocus = () =>
+      void queryClient.invalidateQueries({ queryKey: ['code', workspaceId, projectId ?? 'ws', 'list'] });
+    window.addEventListener('focus', onFocus);
+    return () => {
+      off();
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [queryClient, workspaceId, projectId]);
 }
 
 export function useCodeFile(scope: CodeScope, path: string) {

@@ -4,7 +4,18 @@ import { cn } from '@renderer/lib/cn';
 import { invoke } from '@renderer/lib/ipc';
 
 /** Copia o texto para a área de transferência e confirma por um instante com "Copiado". */
-export function CopyButton({ text, label, className }: { text: string; label: string; className?: string }) {
+export function CopyButton({
+  text,
+  label,
+  className,
+  compact,
+}: {
+  text: string;
+  label: string;
+  className?: string;
+  /** Só o ícone (o texto fica para leitores de tela): para botões que ficam sobre blocos de código. */
+  compact?: boolean;
+}) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -33,7 +44,7 @@ export function CopyButton({ text, label, className }: { text: string; label: st
       )}
     >
       {state === 'copied' ? <Check size={12} className="text-ok" /> : <Copy size={12} />}
-      <span aria-live="polite">
+      <span aria-live="polite" className={compact ? 'sr-only' : undefined}>
         {state === 'copied' ? 'Copiado' : state === 'failed' ? 'Não foi possível copiar' : 'Copiar'}
       </span>
     </button>

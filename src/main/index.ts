@@ -15,6 +15,7 @@ import { reapOrphans, systemReaperDeps } from './agent/orphan-reaper';
 import { BRAND, PALETTE } from '@shared/brand';
 import { paletteCss, withAppearance } from '@shared/palette';
 import { CHAT_EVENT_CHANNEL } from '@shared/chat';
+import { CODE_EVENT_CHANNEL } from '@shared/code';
 import { KNOWLEDGE_EVENT_CHANNEL } from '@shared/knowledge';
 import { NexusError } from '@shared/ipc-result';
 import {
@@ -34,6 +35,7 @@ import { SessionManager } from './agent/session-manager';
 import { AttachmentMaintenance } from './core/chat/attachment-maintenance';
 import { AttachmentService } from './core/chat/attachment-service';
 import { ChatService } from './core/chat/chat-service';
+import { CodeWatcher } from './core/code/code-watcher';
 import { CodeService } from './core/code/code-service';
 import { FileOpener } from './core/code/file-opener';
 import { GlobalInstructions } from './core/context/global-instructions';
@@ -95,6 +97,7 @@ let database: Database | undefined;
 let sessions: SessionManager | undefined;
 let broker: PermissionBroker | undefined;
 let knowledge: KnowledgeService | undefined;
+let codeWatcher: CodeWatcher | undefined;
 let mainWindow: BrowserWindow | undefined;
 
 function bootstrap(): void {
@@ -227,6 +230,14 @@ function bootstrap(): void {
     reveal: (target) => shell.showItemInFolder(target),
     protectedDirs: [paths.userData],
   });
+  // A árvore de arquivos pede para observar só as pastas que mostra abertas; mudanças por fora chegam como evento.
+  const codeChanges = new CodeWatcher({
+    resolveRoot: (scope) => code.root(scope),
+    emit: (event) => {
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.send(CODE_EVENT_CHANNEL, event);
+    },
+  });
+  codeWatcher = codeChanges;
   const attachments = new AttachmentService({
     workspaces,
     thumbnail: (file) => {
@@ -373,6 +384,7 @@ function bootstrap(): void {
             openFolder: (dir) => shell.openPath(dir),
           }),
           chat,
+          watcher: codeChanges,
           // Só endereços vscode:// montados pelo CodeService (caminho já conferido dentro do escopo).
           openUrl: (url) => shell.openExternal(url),
         }),
@@ -437,6 +449,7 @@ if (!app.requestSingleInstanceLock()) {
     broker?.cancelAll();
     sessions?.closeAll();
     knowledge?.close();
+    codeWatcher?.close();
     database?.db.close();
   });
 }

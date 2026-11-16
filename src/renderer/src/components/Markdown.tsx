@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { remarkNoteColors } from '@renderer/features/knowledge/editor/remark-note-colors';
 import { fileTargetFromCode, fileTargetFromHref } from '@renderer/lib/file-links';
 import { useFileLinkHandler } from '@renderer/features/chat/file-link-context';
+import { CopyButton } from '@renderer/features/chat/CopyButton';
 
 const NOTE_SCHEME = 'nexus-note:';
 
@@ -41,6 +43,36 @@ function plainText(children: unknown): string | null {
   return null;
 }
 
+/** Texto de um nó do Markdown (hast), de qualquer profundidade: é o que o botão de copiar do bloco de código copia. */
+export function hastText(node: unknown): string {
+  const n = node as { type?: string; value?: string; children?: unknown[] } | null | undefined;
+  if (!n) return '';
+  if (n.type === 'text') return n.value ?? '';
+  return (n.children ?? []).map(hastText).join('');
+}
+
+/**
+ * Bloco de código com botão de copiar que acompanha a rolagem: num bloco longo, o botão fica sempre à vista no canto
+ * de cima, sem precisar voltar ao começo do bloco.
+ */
+function CodeBlock({ node, children }: { node: unknown; children: ReactNode }) {
+  // O código termina com uma quebra de linha que o Markdown acrescenta; não faz parte do que se quer copiar.
+  const text = hastText(node).replace(/\n$/, '');
+  return (
+    <div className="md-code" data-testid="code-block">
+      <div className="md-code-tools">
+        <CopyButton
+          text={text}
+          label="Copiar código"
+          compact
+          className="border border-border bg-surface p-1.5 shadow-sm"
+        />
+      </div>
+      <pre>{children}</pre>
+    </div>
+  );
+}
+
 /**
  * Markdown das respostas e das notas. HTML bruto não é renderizado (padrão do react-markdown) e links externos
  * abrem no navegador do sistema; o main só aceita https (ver window/security.ts).
@@ -58,6 +90,7 @@ export function Markdown({ children, onNoteLink }: MarkdownProps) {
           url.startsWith(NOTE_SCHEME) || (openFile && fileTargetFromHref(url)) ? url : defaultUrlTransform(url)
         }
         components={{
+          pre: ({ node, children: block }) => <CodeBlock node={node}>{block}</CodeBlock>,
           code: ({ className, children: text, ...rest }) => {
             const target = openFile && !className ? fileTargetFromCode(plainText(text) ?? '') : null;
             if (!target || !openFile)
