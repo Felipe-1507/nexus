@@ -106,6 +106,7 @@ const MOON_VERTEX = /* glsl */ `
   attribute float aDim;  // 1 = planeta fora da busca
   uniform float uTime;
   varying float vDim;
+  varying vec3 vL;
   varying vec3 vN;
   varying vec3 vObj;
   varying vec3 vC;
@@ -117,6 +118,7 @@ const MOON_VERTEX = /* glsl */ `
     vObj = position;
     vC = aLook.rgb;
     vDim = aDim;
+    vL = viewMatrix[3].xyz - (modelViewMatrix * vec4(center, 1.0)).xyz;
     vN = normalize(mat3(modelViewMatrix) * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(center + position * aLook.a, 1.0);
   }
@@ -128,6 +130,7 @@ const MOON_FRAGMENT = /* glsl */ `
   varying vec3 vObj;
   varying vec3 vC;
   varying float vDim;
+  varying vec3 vL;
   uniform float uRim;
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
@@ -139,7 +142,7 @@ const MOON_FRAGMENT = /* glsl */ `
     vec3 q = floor(normalize(vObj) * 4.0);
     float spot = hash(q);
     vec3 col = vC * (0.78 + 0.28 * spot);
-    vec3 L = normalize(vec3(0.45, 0.55, 0.7));
+    vec3 L = normalize(mix(normalize(vec3(0.45, 0.55, 0.7)), normalize(vL), 0.45));
     vec3 N = normalize(vN);
     float diff = max(dot(N, L), 0.0);
     float rim = pow(1.0 - abs(N.z), 2.2);

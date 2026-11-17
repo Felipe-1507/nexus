@@ -8,6 +8,7 @@ import { Button } from '@renderer/components/ui/Button';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { useLayout } from '@renderer/app/shell/layout-store';
 import { useGalaxyGraph, useGalaxyStyles, useSetPlanetStyle } from '@renderer/features/knowledge/queries';
+import { workspaceColors } from '@renderer/features/workspaces/appearance';
 import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { cn } from '@renderer/lib/cn';
 import { invoke } from '@renderer/lib/ipc';
@@ -35,10 +36,29 @@ export function GalaxyView({ mode = 'full' }: { mode?: GalaxyMode }) {
       />
     );
   }
-  return <Galaxy key={workspace.id} workspaceId={workspace.id} knowledgeDir={workspace.knowledgeDir} mode={mode} />;
+  return (
+    <Galaxy
+      key={workspace.id}
+      workspaceId={workspace.id}
+      knowledgeDir={workspace.knowledgeDir}
+      sun={{ name: workspace.name, color: workspaceColors[workspace.color].hex }}
+      mode={mode}
+    />
+  );
 }
 
-function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; knowledgeDir: string; mode: GalaxyMode }) {
+function Galaxy({
+  workspaceId,
+  knowledgeDir,
+  sun,
+  mode,
+}: {
+  workspaceId: string;
+  knowledgeDir: string;
+  /** O sol do centro: o nome e a cor do Workspace. */
+  sun: { name: string; color: string };
+  mode: GalaxyMode;
+}) {
   const panel = mode === 'panel';
   const graph = useGalaxyGraph(workspaceId);
   const openNote = useLayout((s) => s.openNote);
@@ -75,6 +95,8 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
   const profile = GALAXY_PROFILES[useGalaxyQuality().data?.quality ?? DEFAULT_GALAXY_QUALITY];
   const profileRef = useRef(profile);
   profileRef.current = profile;
+  const sunRef = useRef(sun);
+  sunRef.current = sun;
 
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -95,6 +117,7 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
         },
         { reducedMotion, openOnClick: !panel, profile: profileRef.current },
       );
+      scene.current.setSun(sunRef.current.name, sunRef.current.color);
     } catch (err) {
       setFailure(err instanceof Error ? err.message : String(err));
     }
@@ -160,6 +183,10 @@ function Galaxy({ workspaceId, knowledgeDir, mode }: { workspaceId: string; know
       offChat();
     };
   }, [workspaceId, knowledgeDir]);
+
+  useEffect(() => {
+    scene.current?.setSun(sun.name, sun.color);
+  }, [sun.name, sun.color]);
 
   useEffect(() => {
     if (graph.data && layout && styles) scene.current?.setData(graph.data, layout, styles);

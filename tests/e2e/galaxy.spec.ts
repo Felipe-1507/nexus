@@ -459,7 +459,11 @@ test('luas: anexos incorporados orbitam o planeta e aparecem no cartão; anexo q
   const { app, page, userData } = await launchApp();
   try {
     const ws = await createWorkspace(page, 'Luas');
-    write(ws.knowledgeDir, 'Contratos/Fornecedor.md', '# Fornecedor\n![[contrato.pdf]]\n![[foto.png]]\n![[sumiu.pdf]]\n');
+    write(
+      ws.knowledgeDir,
+      'Contratos/Fornecedor.md',
+      '# Fornecedor\n![[contrato.pdf]]\n![[foto.png]]\n![[sumiu.pdf]]\n',
+    );
     write(ws.knowledgeDir, 'Contratos/contrato.pdf', 'x');
     write(ws.knowledgeDir, 'Contratos/foto.png', 'x');
     await openGalaxy(page);
@@ -560,6 +564,27 @@ test('exploração: tour guiado passa sozinho pelas paradas, para com Esc ou ao 
     await page.keyboard.press('Escape');
     await expect(canvas).toHaveAttribute('data-contemplative', 'false');
     await expect(page.getByRole('combobox', { name: 'Buscar nota na galáxia' })).toBeVisible();
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
+test('sol no centro: leva o nome do Workspace e o núcleo (notas soltas) orbita em volta dele', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Trabalho');
+    write(ws.knowledgeDir, 'Solta.md', '# Solta\n');
+    write(ws.knowledgeDir, 'Contas/A.md', '# A\n');
+    write(ws.knowledgeDir, 'Fiscal/B.md', '# B\n');
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '3');
+    await expect(canvas).toHaveAttribute('data-systems', '3');
+    await expect(canvas).toHaveAttribute('data-sun', 'Trabalho');
+    // O sol tem o rótulo do Workspace; o núcleo não tem rótulo próprio (a estrela dele é o sol).
+    await expect(canvas.locator('..').getByText('Trabalho', { exact: true })).toBeVisible();
+    await expect(canvas.locator('..').getByText('Núcleo', { exact: true })).toHaveCount(0);
   } finally {
     await app.close();
     removeUserData(userData);

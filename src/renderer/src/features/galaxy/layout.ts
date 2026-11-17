@@ -7,9 +7,12 @@ import { hash01, planetSize } from '@shared/planets';
  * Assim a galáxia abre na hora mesmo com milhares de notas e os planetas não mudam de lugar entre uma abertura e
  * outra.
  *
- * - Sistema solar = pasta de primeiro nível. As notas soltas formam o núcleo, no centro.
- * - Os sistemas seguem uma espiral (ângulo de ouro): cada um fica na menor distância ao centro em que não encosta em
- *   nenhum dos anteriores, então dois sistemas nunca se sobrepõem.
+ * - No centro de tudo fica o sol do Workspace, sem ligação com nenhuma nota. Os sistemas giram em volta dele.
+ * - Sistema solar = pasta de primeiro nível. As notas soltas formam o núcleo, que orbita o próprio sol (o sol é a
+ *   estrela dele).
+ * - Os sistemas se distribuem em braços de espiral, como numa galáxia: os maiores mais perto do sol, cada um na menor
+ *   distância ao longo do seu braço em que não encosta em nenhum dos anteriores. Dois sistemas nunca se sobrepõem e o
+ *   conjunto fica redondo.
  * - Dentro do sistema, os planetas giram em órbitas em volta da estrela: as notas mais conectadas nas órbitas de
  *   dentro. Cada órbita tem folga para o maior planeta, então nenhum encosta em outro.
  */
@@ -23,6 +26,8 @@ export interface PlacedSystem {
   extent: number;
   count: number;
   color: string;
+  /** Núcleo (notas soltas na raiz): fica no centro, em volta do sol, que é a estrela dele. */
+  core: boolean;
 }
 
 export interface PlacedNote {
@@ -41,13 +46,25 @@ export interface PlacedOrbit {
   radius: number;
 }
 
+/** O sol do Workspace, no centro (0, 0, 0). */
+export interface PlacedSun {
+  radius: number;
+}
+
 export interface GalaxyLayout {
+  sun: PlacedSun;
   systems: PlacedSystem[];
   orbits: PlacedOrbit[];
   notes: PlacedNote[];
 }
 
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+/** Raio do sol e folga em volta dele (a corona) onde nenhum sistema entra. */
+export const SUN_RADIUS = 9;
+const SUN_CLEAR = SUN_RADIUS + 9;
+/** Braços da espiral e quanto cada um se enrola (volta em radianos por `SPIRAL_SCALE` de distância, em escala log). */
+const ARMS = 3;
+const SPIRAL_TWIST = 1.6;
+const SPIRAL_SCALE = 40;
 const SYSTEM_MARGIN = 6;
 const PUSH_STEP = 2;
 const DAY = 86_400_000;
@@ -73,10 +90,10 @@ interface Orbit {
  * distante. Em cada órbita os planetas ficam a distâncias iguais e a corda entre vizinhos comporta os dois; entre uma
  * órbita e a seguinte sobra uma folga. Assim nada encosta.
  */
-function planOrbits(sizes: number[]): { orbits: Orbit[]; extent: number } {
+function planOrbits(sizes: number[], inner = 0): { orbits: Orbit[]; extent: number } {
   const orbits: Orbit[] = [];
   let next = 0;
-  let radius = FIRST_ORBIT;
+  let radius = Math.max(FIRST_ORBIT, inner);
   while (next < sizes.length) {
     const previous = orbits.at(-1);
     for (;;) {
@@ -91,7 +108,7 @@ function planOrbits(sizes: number[]): { orbits: Orbit[]; extent: number } {
       }
       const minRadius = previous
         ? previous.radius + previous.reach + reach + ORBIT_GAP
-        : Math.max(FIRST_ORBIT, reach + 2.5);
+        : Math.max(FIRST_ORBIT, reach + 2.5, inner > 0 ? inner + reach : 0);
       if (radius < minRadius) {
         radius = minRadius;
         continue;
@@ -106,9 +123,9 @@ function planOrbits(sizes: number[]): { orbits: Orbit[]; extent: number } {
   return { orbits, extent: last ? last.radius + last.reach + 1 : FIRST_ORBIT };
 }
 
-/** Raio ocupado por um sistema com esses planetas. */
-export function systemExtent(sizes: number[]): number {
-  return planOrbits(sizes).extent;
+/** Raio ocupado por um sistema com esses planetas (`inner`: raio livre no meio, para o sol). */
+export function systemExtent(sizes: number[], inner = 0): number {
+  return planOrbits(sizes, inner).extent;
 }
 
 /** Brilho pela idade: pleno até 7 dias, apagando até os 30. */
@@ -141,7 +158,8 @@ export function layoutGalaxy(
   const systems: PlacedSystem[] = [];
   const orbits: PlacedOrbit[] = [];
   const notes = new Array<PlacedNote>(graph.notes.length);
-  let distance = 0;
+  // Até onde cada braço já foi preenchido: o próximo sistema do braço começa dali (e vai para fora).
+  const armReach = new Array<number>(ARMS).fill(0);
   let colorIndex = 0;
 
   names.forEach((name, k) => {
@@ -151,24 +169,41 @@ export function layoutGalaxy(
         graph.notes[b]!.degree - graph.notes[a]!.degree || graph.notes[a]!.path.localeCompare(graph.notes[b]!.path),
     );
     const sizes = ranked.map((i) => planetSize(graph.notes[i]!.degree, graph.notes[i]!.chars));
-    const plan = planOrbits(sizes);
-    const extent = plan.extent;
     const isCore = name === '' && k === 0;
-    const angle = k * GOLDEN_ANGLE;
-    // Começa na distância do sistema anterior e se afasta do centro até não encostar em nenhum já colocado.
-    const clear = (d: number) =>
-      systems.every(
-        (o) => Math.hypot(Math.cos(angle) * d - o.x, Math.sin(angle) * d - o.z) >= o.extent + extent + SYSTEM_MARGIN,
-      );
-    if (k > 0) while (!clear(distance)) distance += PUSH_STEP;
+    // O núcleo gira em volta do sol: a primeira órbita começa depois dele.
+    const plan = planOrbits(sizes, isCore ? SUN_RADIUS + 1.5 : 0);
+    const extent = plan.extent;
+    let x = 0;
+    let z = 0;
+    if (!isCore) {
+      // Posição ao longo do braço: o ângulo cresce com a distância (espiral logarítmica), com um leve desvio por
+      // sistema para os braços não parecerem régua.
+      // Cada sistema vai para o braço menos preenchido até agora: os braços crescem juntos e o conjunto fica redondo.
+      const mine = armReach.indexOf(Math.min(...armReach));
+      const phase = (mine / ARMS) * Math.PI * 2 + (hash01(`arm:${name}`) - 0.5) * 0.5;
+      const at = (d: number) => {
+        const angle = phase + SPIRAL_TWIST * Math.log1p(d / SPIRAL_SCALE);
+        return { x: Math.cos(angle) * d, z: Math.sin(angle) * d };
+      };
+      // Sai do ponto onde o braço parou e se afasta do sol até não encostar em nenhum sistema já colocado.
+      const clear = (d: number) => {
+        const p = at(d);
+        return systems.every((o) => Math.hypot(p.x - o.x, p.z - o.z) >= o.extent + extent + SYSTEM_MARGIN);
+      };
+      let d = Math.max(armReach[mine]!, SUN_CLEAR + extent);
+      while (!clear(d)) d += PUSH_STEP;
+      armReach[mine] = d;
+      ({ x, z } = at(d));
+    }
     const system: PlacedSystem = {
       name,
-      x: Math.cos(angle) * distance,
+      x,
       y: isCore ? 0 : (hash01(`y:${name}`) - 0.5) * 8,
-      z: Math.sin(angle) * distance,
+      z,
       extent,
       count: members.length,
       color: isCore ? core : cycle[colorIndex++ % cycle.length]!,
+      core: isCore,
     };
     systems.push(system);
 
@@ -191,7 +226,7 @@ export function layoutGalaxy(
     });
   });
 
-  return { systems, orbits, notes };
+  return { sun: { radius: SUN_RADIUS }, systems, orbits, notes };
 }
 
 /**

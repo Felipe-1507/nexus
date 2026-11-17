@@ -23,6 +23,8 @@ export interface GalaxyProfile {
   nebulaDensity: number;
   /** Estrelas da camada próxima (dão profundidade: andam mais que as do fundo quando a câmera se mexe). */
   nearStars: number;
+  /** Camadas de luz da corona do sol (1 a 3). */
+  sunLayers: number;
   /** Força do brilho de borda (Fresnel) dos planetas sem atmosfera própria. */
   rim: number;
   /** Intervalo médio entre estrelas cadentes e entre cometas, em segundos. */
@@ -52,6 +54,7 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     unfocusedFps: 30,
     backgroundStars: 2500,
     nebulaDensity: 1,
+    sunLayers: 3,
     nearStars: 1400,
     rim: 1,
     shootingStarEverySec: 12,
@@ -66,6 +69,7 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     unfocusedFps: 0,
     backgroundStars: 1800,
     nebulaDensity: 0.65,
+    sunLayers: 2,
     nearStars: 450,
     rim: 0.6,
     shootingStarEverySec: 30,

@@ -33,6 +33,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GalaxyGraph } from '@shared/knowledge';
 import { hash01, planetColors, type PlanetStyle } from '@shared/planets';
 import type { GalaxyLayout } from './layout';
+import { createSun } from './sun';
 import { createComets, createFlows, isImportantRoute } from './route-effects';
 import { createShips, galaxyRadius } from './ship-effects';
 import { ActivityLayer, type Spot } from './activity-effects';
@@ -112,7 +113,9 @@ export class GalaxyScene {
   private readonly haloMaterial: ShaderMaterial;
 
   private graph: GalaxyGraph = { notes: [], links: [] };
-  private layout: GalaxyLayout = { systems: [], orbits: [], notes: [] };
+  private layout: GalaxyLayout = { sun: { radius: 0 }, systems: [], orbits: [], notes: [] };
+  /** Nome e cor (hex) do Workspace: o sol do centro. */
+  private sunInfo = { name: '', color: '#ffd98a' };
   private planets: InstancedMesh | null = null;
   private systemLabels: Array<{ el: HTMLDivElement; pos: Vector3; extent: number }> = [];
   private selected: number | null = null;
@@ -284,6 +287,13 @@ export class GalaxyScene {
     this.fit();
   }
 
+  /** Nome e cor do Workspace, que dão ao sol do centro o nome (rótulo) e a cor. */
+  setSun(name: string, color: string): void {
+    if (name === this.sunInfo.name && color === this.sunInfo.color) return;
+    this.sunInfo = { name, color };
+    if (this.graph.notes.length > 0) this.setData(this.graph, this.layout, this.styles);
+  }
+
   /** O Claude começou a criar ou editar uma nota (caminho relativo ao vault): uma nave vai até ela. */
   claudeEdit(path: string): void {
     if (!this.activity || !this.visible()) return;
@@ -336,6 +346,7 @@ export class GalaxyScene {
     this.styles = styles;
     this.pathIndex = new Map(graph.notes.map((n, i) => [n.path.toLowerCase(), i]));
     this.clearContent();
+    this.buildSun();
     this.buildSystems();
     this.buildOrbits();
     this.buildPlanets(styles);
@@ -710,8 +721,25 @@ export class GalaxyScene {
     this.content.add(new LineSegments(geometry, material));
   }
 
+  /** O sol do Workspace no centro: a estrela do núcleo e o ponto de luz de toda a galáxia. Sem rotas nem ligações. */
+  private buildSun(): void {
+    if (this.layout.systems.length === 0) return;
+    this.content.add(
+      ...createSun({
+        radius: this.layout.sun.radius,
+        color: this.sunInfo.color,
+        time: this.time,
+        halo: this.haloMaterial,
+        layers: this.profile.sunLayers,
+      }),
+    );
+    this.container.dataset.sun = this.sunInfo.name;
+  }
+
   private buildSystems(): void {
-    const { systems } = this.layout;
+    // O núcleo não tem estrela própria: a dele é o sol.
+    const systems = this.layout.systems.filter((s) => !s.core);
+    const sun = this.layout.sun.radius;
     const star = new InstancedMesh(
       new SphereGeometry(1, 20, 14),
       new MeshBasicMaterial({ color: 0xffffff }),
@@ -730,14 +758,20 @@ export class GalaxyScene {
     });
     this.content.add(star, halo.points, this.nebula());
 
-    this.systemLabels = systems.map((s) => {
+    const label = (text: string, pos: Vector3, extent: number, cls = '') => {
       const el = document.createElement('div');
-      el.className =
-        'absolute top-0 left-0 text-[11px] font-semibold tracking-wide whitespace-nowrap text-white/85 uppercase [text-shadow:0_1px_4px_#000]';
-      el.textContent = s.name || 'Núcleo';
+      el.className = `absolute top-0 left-0 text-[11px] font-semibold tracking-wide whitespace-nowrap text-white/85 uppercase [text-shadow:0_1px_4px_#000] ${cls}`;
+      el.textContent = text;
       this.labels.appendChild(el);
-      return { el, pos: new Vector3(s.x, s.y + 1.6 + 0.12 * Math.sqrt(s.count), s.z), extent: s.extent };
-    });
+      return { el, pos, extent };
+    };
+    this.systemLabels = systems.map((s) =>
+      label(s.name, new Vector3(s.x, s.y + 1.6 + 0.12 * Math.sqrt(s.count), s.z), s.extent),
+    );
+    // Rótulo do sol: o nome do Workspace, visível de longe (o sol é grande).
+    if (this.sunInfo.name) {
+      this.systemLabels.push(label(this.sunInfo.name, new Vector3(0, sun * 1.4, 0), sun * 4, 'text-[12px] text-white'));
+    }
   }
 
   /** Poeira luminosa em volta de cada sistema: de longe, é ela que faz o conjunto parecer uma galáxia. */

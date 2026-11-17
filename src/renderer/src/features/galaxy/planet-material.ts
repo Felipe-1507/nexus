@@ -27,6 +27,7 @@ const PLANET_VERTEX = /* glsl */ `
   varying vec4 vAt;
   varying float vGlow;
   varying float vMatch;
+  varying vec3 vL;
   void main() {
     vMatch = aMatch;
     // Rotação: a superfície gira em volta do eixo do planeta (a luz fica parada), cada um no seu ritmo e sentido.
@@ -39,6 +40,8 @@ const PLANET_VERTEX = /* glsl */ `
     vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
     vN = normalize(mat3(modelViewMatrix) * mat3(instanceMatrix) * normal);
     vV = normalize(-mv.xyz);
+    // Direção do sol (que fica na origem do mundo) vista deste planeta: viewMatrix[3] é a origem em coordenadas da câmera.
+    vL = viewMatrix[3].xyz - mv.xyz;
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -54,6 +57,7 @@ const PLANET_FRAGMENT = /* glsl */ `
   varying vec4 vAt;
   varying float vGlow;
   varying float vMatch;
+  varying vec3 vL;
   uniform float uRim;
 
   float hash(vec3 p) {
@@ -130,7 +134,8 @@ const PLANET_FRAGMENT = /* glsl */ `
       spec = 0.8;
     }
 
-    vec3 L = normalize(vec3(0.45, 0.55, 0.7));
+    // O lado claro olha para o sol; parte da luz continua vindo da câmera, para o outro lado não sumir.
+    vec3 L = normalize(mix(normalize(vec3(0.45, 0.55, 0.7)), normalize(vL), 0.45));
     vec3 N = normalize(vN);
     vec3 V = normalize(vV);
     float diff = max(dot(N, L), 0.0);

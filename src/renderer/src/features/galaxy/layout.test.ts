@@ -118,3 +118,64 @@ describe('busca visual', () => {
     expect(searchNotes(g, '#fiscal')).toEqual([1, 0]);
   });
 });
+
+describe('sol no centro e braços de espiral', () => {
+  const many = (count: number, withCore: boolean) => {
+    const paths: string[] = withCore ? ['Solta 1.md', 'Solta 2.md', 'Solta 3.md'] : [];
+    for (let s = 0; s < count; s++) for (let n = 0; n <= (s * 37) % 40; n++) paths.push(`Pasta ${s}/Nota ${n}.md`);
+    return layoutGalaxy(graph(paths), NOW);
+  };
+
+  it('o sol fica na origem; nenhum sistema entra nele e o núcleo orbita em volta dele', () => {
+    for (const withCore of [true, false]) {
+      const { sun, systems, notes } = many(30, withCore);
+      expect(sun.radius).toBeGreaterThan(0);
+      for (const s of systems) {
+        if (s.core) {
+          expect(s).toMatchObject({ x: 0, y: 0, z: 0, name: '' });
+          // Os planetas do núcleo ficam fora do sol, com a folga do próprio tamanho.
+          notes.forEach((n, i) => {
+            if (n.system !== 0) return;
+            expect(Math.hypot(n.x, n.z) - n.size).toBeGreaterThan(sun.radius);
+            expect(i).toBeGreaterThanOrEqual(0);
+          });
+        } else expect(Math.hypot(s.x, s.z) - s.extent).toBeGreaterThan(sun.radius);
+      }
+      expect(systems.filter((s) => s.core)).toHaveLength(withCore ? 1 : 0);
+    }
+  });
+
+  it('o conjunto é redondo: o centro de massa fica perto do sol e nenhum lado é muito maior que o oposto', () => {
+    const { systems } = many(60, true);
+    const reach = Math.max(...systems.map((s) => Math.hypot(s.x, s.z) + s.extent));
+    const cx = systems.reduce((a, s) => a + s.x, 0) / systems.length;
+    const cz = systems.reduce((a, s) => a + s.z, 0) / systems.length;
+    expect(Math.hypot(cx, cz)).toBeLessThan(reach * 0.25);
+    // Alcance em oito direções: o maior não passa de 2,2 vezes o menor (a espiral não fica torta para um lado).
+    const sectors = new Array<number>(8).fill(0);
+    for (const s of systems) {
+      const k = Math.floor(((Math.atan2(s.z, s.x) + Math.PI) / (Math.PI * 2)) * 8) % 8;
+      sectors[k] = Math.max(sectors[k]!, Math.hypot(s.x, s.z) + s.extent);
+    }
+    expect(Math.max(...sectors) / Math.min(...sectors.filter((v) => v > 0))).toBeLessThan(2.2);
+    expect(sectors.every((v) => v > 0)).toBe(true);
+  });
+
+  it('os sistemas maiores ficam mais perto do sol que os menores (na média)', () => {
+    const { systems } = many(40, false);
+    const byDistance = [...systems].sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+    const half = Math.floor(byDistance.length / 2);
+    const mean = (list: typeof systems) => list.reduce((a, s) => a + s.count, 0) / list.length;
+    expect(mean(byDistance.slice(0, half))).toBeGreaterThan(mean(byDistance.slice(half)));
+  });
+
+  it('é determinístico e cresce em braços: sistemas do mesmo braço ficam em fila para fora', () => {
+    const a = many(30, true);
+    expect(many(30, true)).toEqual(a);
+    const angle = (s: { x: number; z: number }) => Math.atan2(s.z, s.x);
+    const outer = a.systems.filter((s) => !s.core).slice(-3);
+    // Os últimos sistemas, um por braço, ficam em direções bem diferentes (não todos para o mesmo lado).
+    const spread = Math.max(...outer.map(angle)) - Math.min(...outer.map(angle));
+    expect(spread).toBeGreaterThan(1);
+  });
+});
