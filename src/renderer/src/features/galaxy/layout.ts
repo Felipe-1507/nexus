@@ -10,9 +10,9 @@ import { hash01, planetSize } from '@shared/planets';
  * - No centro de tudo fica o sol do Workspace, sem ligação com nenhuma nota. Os sistemas giram em volta dele.
  * - Sistema solar = pasta de primeiro nível. As notas soltas formam o núcleo, que orbita o próprio sol (o sol é a
  *   estrela dele).
- * - Os sistemas se distribuem em braços de espiral, como numa galáxia: os maiores mais perto do sol, cada um na menor
- *   distância ao longo do seu braço em que não encosta em nenhum dos anteriores. Dois sistemas nunca se sobrepõem e o
- *   conjunto fica redondo.
+ * - Os sistemas giram em anéis concêntricos em volta do sol, como planetas em volta de uma estrela: os maiores nos anéis
+ *   de dentro. Dentro de cada anel eles se espalham em volta do círculo com folgas e distâncias do sol um pouco
+ *   diferentes (nada alinhado certinho), mas sempre sem encostar um no outro.
  * - Dentro do sistema, os planetas giram em órbitas em volta da estrela: as notas mais conectadas nas órbitas de
  *   dentro. Cada órbita tem folga para o maior planeta, então nenhum encosta em outro.
  */
@@ -61,12 +61,11 @@ export interface GalaxyLayout {
 /** Raio do sol e folga em volta dele (a corona) onde nenhum sistema entra. */
 export const SUN_RADIUS = 9;
 const SUN_CLEAR = SUN_RADIUS + 9;
-/** Braços da espiral e quanto cada um se enrola (volta em radianos por `SPIRAL_SCALE` de distância, em escala log). */
-const ARMS = 3;
-const SPIRAL_TWIST = 1.6;
-const SPIRAL_SCALE = 40;
 const SYSTEM_MARGIN = 6;
-const PUSH_STEP = 2;
+/** Espaço livre entre um anel de sistemas e o seguinte. */
+const RING_GAP = SYSTEM_MARGIN + 4;
+/** Quanto um sistema pode sair do raio do anel, em fração da folga que ele tem dentro da faixa do anel. */
+const RING_JITTER = 0.35;
 const DAY = 86_400_000;
 
 /** Raio livre em volta de um planeta (anel e brilho incluídos): dois planetas nunca ficam mais perto que isso. */
@@ -135,6 +134,64 @@ export function recencyGlow(mtimeMs: number, now: number): number {
   return Math.max(0, 1 - (age - 7) / 23);
 }
 
+/**
+ * Distribui sistemas em anéis concêntricos em volta da origem (o sol), a partir do raio livre `inner`. Os maiores vão
+ * para os anéis de dentro. Cada anel recebe quantos sistemas couberem em volta do círculo sem encostar (a corda entre
+ * vizinhos comporta os dois raios mais a margem); o espaço que sobra é repartido de forma irregular entre os vizinhos, e
+ * cada sistema pode ficar um pouco mais para dentro ou para fora do raio do anel, sem sair da faixa dele. Devolve a
+ * posição de cada item, na mesma ordem da entrada.
+ */
+export function planRings(
+  items: Array<{ extent: number; key: string }>,
+  inner: number,
+): Array<{ x: number; z: number }> {
+  const out = new Array<{ x: number; z: number }>(items.length);
+  const order = items
+    .map((_, i) => i)
+    .sort((a, b) => items[b]!.extent - items[a]!.extent || items[a]!.key.localeCompare(items[b]!.key));
+  let next = 0;
+  let edge = inner;
+  let ringIndex = 0;
+  while (next < order.length) {
+    const first = items[order[next]!]!.extent;
+    const radius = edge + first;
+    // Ângulo mínimo entre dois vizinhos do anel: a corda tem que comportar os dois sistemas e a margem. Usa o raio mais
+    // interno que algum deles pode ter (por causa do desvio), o que só deixa a conta mais folgada.
+    const span = (a: number, b: number, low: number) =>
+      2 * Math.asin(Math.min(1, (items[a]!.extent + items[b]!.extent + SYSTEM_MARGIN) / (2 * low)));
+    const lowest = (last: number) => radius - RING_JITTER * (first - items[last]!.extent);
+    const fits = (list: number[]) => {
+      if (list.length < 2) return true;
+      const low = lowest(list[list.length - 1]!);
+      let sum = 0;
+      for (let i = 0; i < list.length; i++) sum += span(list[i]!, list[(i + 1) % list.length]!, low);
+      return sum <= Math.PI * 2;
+    };
+    const ring = [order[next]!];
+    while (next + ring.length < order.length && fits([...ring, order[next + ring.length]!])) {
+      ring.push(order[next + ring.length]!);
+    }
+    next += ring.length;
+
+    const start = hash01(`ring:${ringIndex}`) * Math.PI * 2;
+    const low = lowest(ring[ring.length - 1]!);
+    const spans = ring.map((a, i) => (ring.length < 2 ? 0 : span(a, ring[(i + 1) % ring.length]!, low)));
+    const slack = Math.max(0, Math.PI * 2 - spans.reduce((a, b) => a + b, 0));
+    const weights = ring.map((a) => 0.6 + 0.8 * hash01(`gap:${items[a]!.key}`));
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    let angle = start;
+    ring.forEach((a, i) => {
+      const room = first - items[a]!.extent;
+      const r = radius + (hash01(`rad:${items[a]!.key}`) * 2 - 1) * RING_JITTER * room;
+      out[a] = { x: Math.cos(angle) * r, z: Math.sin(angle) * r };
+      angle += spans[i]! + (slack * weights[i]!) / weightSum;
+    });
+    edge = radius + first + RING_GAP;
+    ringIndex++;
+  }
+  return out;
+}
+
 /** `colors`: a primeira é a do núcleo; as outras se revezam entre os sistemas. */
 export function layoutGalaxy(
   graph: GalaxyGraph,
@@ -155,46 +212,35 @@ export function layoutGalaxy(
       Number(b === '') - Number(a === '') || groups.get(b)!.length - groups.get(a)!.length || a.localeCompare(b),
   );
 
-  const systems: PlacedSystem[] = [];
-  const orbits: PlacedOrbit[] = [];
-  const notes = new Array<PlacedNote>(graph.notes.length);
-  // Até onde cada braço já foi preenchido: o próximo sistema do braço começa dali (e vai para fora).
-  const armReach = new Array<number>(ARMS).fill(0);
-  let colorIndex = 0;
-
-  names.forEach((name, k) => {
+  // Primeiro o tamanho de cada sistema (as órbitas dos planetas), depois a posição dele em volta do sol.
+  const prepared = names.map((name, k) => {
     const members = groups.get(name)!;
     const ranked = [...members].sort(
-      (a, b) =>
-        graph.notes[b]!.degree - graph.notes[a]!.degree || graph.notes[a]!.path.localeCompare(graph.notes[b]!.path),
+      (x, y) =>
+        graph.notes[y]!.degree - graph.notes[x]!.degree || graph.notes[x]!.path.localeCompare(graph.notes[y]!.path),
     );
     const sizes = ranked.map((i) => planetSize(graph.notes[i]!.degree, graph.notes[i]!.chars));
     const isCore = name === '' && k === 0;
     // O núcleo gira em volta do sol: a primeira órbita começa depois dele.
     const plan = planOrbits(sizes, isCore ? SUN_RADIUS + 1.5 : 0);
+    return { name, members, ranked, sizes, isCore, plan };
+  });
+  const coreExtent = prepared.find((p) => p.isCore)?.plan.extent ?? 0;
+  const others = prepared.filter((p) => !p.isCore);
+  const spots = planRings(
+    others.map((p) => ({ extent: p.plan.extent, key: p.name })),
+    Math.max(SUN_CLEAR, coreExtent > 0 ? coreExtent + RING_GAP : 0),
+  );
+  const spotOf = new Map(others.map((p, i) => [p.name, spots[i]!]));
+
+  const systems: PlacedSystem[] = [];
+  const orbits: PlacedOrbit[] = [];
+  const notes = new Array<PlacedNote>(graph.notes.length);
+  let colorIndex = 0;
+
+  prepared.forEach(({ name, members, ranked, sizes, isCore, plan }) => {
     const extent = plan.extent;
-    let x = 0;
-    let z = 0;
-    if (!isCore) {
-      // Posição ao longo do braço: o ângulo cresce com a distância (espiral logarítmica), com um leve desvio por
-      // sistema para os braços não parecerem régua.
-      // Cada sistema vai para o braço menos preenchido até agora: os braços crescem juntos e o conjunto fica redondo.
-      const mine = armReach.indexOf(Math.min(...armReach));
-      const phase = (mine / ARMS) * Math.PI * 2 + (hash01(`arm:${name}`) - 0.5) * 0.5;
-      const at = (d: number) => {
-        const angle = phase + SPIRAL_TWIST * Math.log1p(d / SPIRAL_SCALE);
-        return { x: Math.cos(angle) * d, z: Math.sin(angle) * d };
-      };
-      // Sai do ponto onde o braço parou e se afasta do sol até não encostar em nenhum sistema já colocado.
-      const clear = (d: number) => {
-        const p = at(d);
-        return systems.every((o) => Math.hypot(p.x - o.x, p.z - o.z) >= o.extent + extent + SYSTEM_MARGIN);
-      };
-      let d = Math.max(armReach[mine]!, SUN_CLEAR + extent);
-      while (!clear(d)) d += PUSH_STEP;
-      armReach[mine] = d;
-      ({ x, z } = at(d));
-    }
+    const { x, z } = spotOf.get(name) ?? { x: 0, z: 0 };
     const system: PlacedSystem = {
       name,
       x,
