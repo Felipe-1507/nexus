@@ -7,6 +7,7 @@ import { useClaudeAutoCheck } from '@renderer/features/claude/queries';
 import { UpdateNotices } from '@renderer/features/claude/UpdateNotices';
 import { GalaxyScreen, usePrefetchGalaxy } from '@renderer/features/galaxy/GalaxyScreen';
 import { useKnowledgeEvents } from '@renderer/features/knowledge/queries';
+import { SearchHost } from '@renderer/features/search/SearchDialog';
 import { PrivacyNoticeHost } from '@renderer/features/privacy/PrivacyNotice';
 import { SettingsView } from '@renderer/features/settings/SettingsView';
 import { useAppearanceSync } from '@renderer/features/settings/queries';
@@ -100,6 +101,7 @@ export function Shell() {
         )}
       </div>
       <WorkspaceDialogHost />
+      <SearchHost />
       <PrivacyNoticeHost />
     </div>
   );

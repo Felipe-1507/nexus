@@ -37,6 +37,14 @@ interface MessageRow {
   createdAt: string;
 }
 
+export interface SearchableMessage {
+  messageId: string;
+  conversationId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
 const usageSchema = z.object({ inputTokens: z.number(), outputTokens: z.number() });
 
 export class ConversationsRepo {
@@ -167,6 +175,25 @@ export class ConversationsRepo {
     const ids = new Set<string>();
     for (const r of rows) for (const a of parseJson(r.attachments, z.array(attachmentSchema)) ?? []) ids.add(a.id);
     return ids;
+  }
+
+  /**
+   * Mensagens das conversas do Workspace (ou só as de um projeto), das conversas mais recentes para as mais antigas e,
+   * dentro de cada uma, da mais nova para a mais velha. Lê aos poucos: quem busca pode parar sem carregar o resto.
+   */
+  *iterateMessagesForSearch(workspaceId: string, projectId?: string): IterableIterator<SearchableMessage> {
+    const scope = projectId ? 'AND c.project_id = ?' : '';
+    const args = projectId ? [workspaceId, projectId] : [workspaceId];
+    const rows = this.db
+      .prepare(
+        `SELECT m.id AS messageId, m.conversation_id AS conversationId, m.role AS role, m.content AS content,
+           m.created_at AS createdAt
+         FROM conversations c JOIN messages m ON m.conversation_id = c.id
+         WHERE c.workspace_id = ? AND c.archived_at IS NULL ${scope} AND m.content <> ''
+         ORDER BY c.updated_at DESC, c.rowid DESC, m.seq DESC`,
+      )
+      .iterate(...args) as IterableIterator<SearchableMessage>;
+    yield* rows;
   }
 
   listFileChanges(messageId: string): FileChange[] {

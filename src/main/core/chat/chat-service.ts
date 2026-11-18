@@ -22,6 +22,13 @@ import {
 import { NexusError } from '@shared/ipc-result';
 import { effortSchema, type ModelChoice } from '@shared/models';
 import type { ClaudeSessionSummary } from '@shared/project';
+import {
+  SEARCH_MAX_HITS,
+  SEARCH_MAX_PER_CONVERSATION,
+  type SearchHit,
+  type SearchInput,
+  type SearchResult,
+} from '@shared/search';
 import type { Workspace } from '@shared/workspace';
 import type { SessionConfig, SessionManager, TurnHandlers } from '../../agent/session-manager';
 import { convertTranscript, selectNewMessages, type TranscriptMessage } from '../../agent/transcript-import';
@@ -31,6 +38,7 @@ import { composeSystemPrompt, summarizeInstructions } from '../context/context-c
 import type { KnowledgeService } from '../knowledge/knowledge-service';
 import type { AttachmentService } from './attachment-service';
 import { ContextService } from './context-service';
+import { excerpt, foldText, hasAll, parseQuery } from './search-text';
 import type { PermissionsService } from '../permissions/permissions-service';
 import type { ProjectService } from '../projects/project-service';
 import { KNOWLEDGE_DIR, type WorkspaceService } from '../workspaces/workspace-service';
@@ -167,6 +175,76 @@ export class ChatService {
   listMessages(conversationId: string): ChatMessage[] {
     this.requireConversation(conversationId);
     return this.repo.listMessages(conversationId);
+  }
+
+  /**
+   * Procura nas mensagens (as do usuário e as do Claude) e nos títulos das conversas do Workspace, ou só nas de um
+   * projeto. Todas as palavras precisam aparecer; maiúsculas e acentos não contam. Só lê o banco do Nexus: nada de
+   * Claude, tokens ou rede. Os mais recentes vêm primeiro.
+   */
+  search(input: SearchInput): SearchResult {
+    this.deps.workspaces.get(input.workspaceId);
+    const terms = parseQuery(input.query);
+    if (terms.length === 0) return { hits: [], truncated: false };
+
+    const conversations = this.repo.listByWorkspace(input.workspaceId, input.projectId);
+    const byId = new Map(conversations.map((c, rank) => [c.id, { row: c, rank }]));
+    const groups = new Map<string, SearchHit[]>();
+    let total = 0;
+    let truncated = false;
+    const add = (hit: SearchHit): boolean => {
+      const group = groups.get(hit.conversationId) ?? [];
+      if (total >= SEARCH_MAX_HITS || group.length >= SEARCH_MAX_PER_CONVERSATION) {
+        truncated = true;
+        return false;
+      }
+      group.push(hit);
+      groups.set(hit.conversationId, group);
+      total++;
+      return true;
+    };
+
+    for (const m of this.repo.iterateMessagesForSearch(input.workspaceId, input.projectId)) {
+      if (!hasAll(foldText(m.content), terms)) continue;
+      const c = byId.get(m.conversationId)?.row;
+      const found = c && excerpt(m.content, terms);
+      if (!c || !found) continue;
+      add({
+        conversationId: c.id,
+        conversationTitle: c.title,
+        projectId: c.projectId,
+        messageId: m.messageId,
+        role: m.role,
+        createdAt: m.createdAt,
+        ...found,
+      });
+      // Com o limite total atingido, não adianta ler mais nada.
+      if (total >= SEARCH_MAX_HITS) {
+        truncated = true;
+        break;
+      }
+    }
+
+    // Conversa que só casa pelo título (nenhuma mensagem casou): aparece com o título como trecho.
+    for (const c of conversations) {
+      if (groups.has(c.id) || !hasAll(foldText(c.title), terms)) continue;
+      const found = excerpt(c.title, terms);
+      if (!found) continue;
+      add({
+        conversationId: c.id,
+        conversationTitle: c.title,
+        projectId: c.projectId,
+        messageId: null,
+        role: null,
+        createdAt: c.updatedAt,
+        ...found,
+      });
+    }
+
+    const hits = [...groups.entries()]
+      .sort((a, b) => (byId.get(a[0])?.rank ?? 0) - (byId.get(b[0])?.rank ?? 0))
+      .flatMap(([, list]) => list);
+    return { hits, truncated };
   }
 
   archive(conversationId: string): void {

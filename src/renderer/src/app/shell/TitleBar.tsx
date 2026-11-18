@@ -1,6 +1,7 @@
 import { BRAND } from '@shared/brand';
-import { PanelLeft, PanelRight } from 'lucide-react';
+import { PanelLeft, PanelRight, Search } from 'lucide-react';
 import { IconButton } from '@renderer/components/ui/IconButton';
+import { useSearch } from '@renderer/features/search/search-store';
 import { WorkspaceAvatar } from '@renderer/features/workspaces/appearance';
 import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { useLayout } from './layout-store';
@@ -10,6 +11,7 @@ export function TitleBar({ sidebarVisible, rightVisible }: { sidebarVisible: boo
   const toggleSidebar = useLayout((s) => s.toggleSidebar);
   const toggleRight = useLayout((s) => s.toggleRight);
   const active = useActiveWorkspace();
+  const showSearch = useSearch((s) => s.show);
 
   return (
     <header className="drag flex h-10 shrink-0 items-center gap-1 border-b border-border bg-titlebar pr-[148px] pl-2">
@@ -35,7 +37,10 @@ export function TitleBar({ sidebarVisible, rightVisible }: { sidebarVisible: boo
           'Nenhum Workspace'
         )}
       </span>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1">
+        <IconButton label="Buscar nas conversas (Ctrl+Shift+F)" disabled={!active} onClick={showSearch}>
+          <Search size={16} />
+        </IconButton>
         <IconButton label="Alternar painel lateral (Ctrl+Alt+B)" active={rightVisible} onClick={toggleRight}>
           <PanelRight size={16} />
         </IconButton>

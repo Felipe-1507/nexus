@@ -1255,3 +1255,106 @@ describe('Continuar em nova conversa', () => {
     expect(forker.fork).not.toHaveBeenCalled();
   });
 });
+
+describe('busca nas conversas', () => {
+  /** Conversa com uma pergunta e a resposta dada (a resposta é gravada como o Claude a gravaria). */
+  async function talk(workspaceId: string, text: string, answer: string, projectId?: string) {
+    const r = await chat.send({ workspaceId, text, ...(projectId ? { projectId } : {}) });
+    sessions.turns.at(-1)!.h.onDone(outcome(answer));
+    return r.conversation.id;
+  }
+
+  async function withProject(name: string) {
+    const ws = workspaces.create({ name, ...base });
+    const folder = fs.mkdtempSync(path.join(dataRoot, 'proj-'));
+    const project = await projects.create({
+      kind: 'linked',
+      workspaceId: ws.id,
+      name: 'NOME',
+      path: folder,
+      trustConfig: false,
+    });
+    return { ws, project };
+  }
+
+  it('acha o que o usuário disse e o que o Claude respondeu, sem diferenciar acento nem maiúscula', async () => {
+    const { ws } = await withProject('Busca');
+    const id = await talk(ws.id, 'Qual a situação do CEST?', 'O CEST 17.001.00 está certo.');
+    const r = chat.search({ workspaceId: ws.id, query: 'SITUACAO cest' });
+    expect(r.hits.map((h) => [h.conversationId, h.role])).toEqual([[id, 'user']]);
+    const hit = r.hits[0]!;
+    expect(hit.text.slice(...hit.ranges[0]!)).toBe('situação');
+
+    const answer = chat.search({ workspaceId: ws.id, query: 'certo' });
+    expect(answer.hits).toHaveLength(1);
+    expect(answer.hits[0]).toMatchObject({ conversationId: id, role: 'assistant', projectId: null });
+    expect(answer.truncated).toBe(false);
+  });
+
+  it('todas as palavras precisam aparecer na mesma mensagem; entre aspas, juntas', async () => {
+    const { ws } = await withProject('Busca');
+    await talk(ws.id, 'a nota fiscal chegou', 'sim');
+    await talk(ws.id, 'fiscal sem nada', 'nota separada');
+    expect(chat.search({ workspaceId: ws.id, query: 'nota fiscal' }).hits).toHaveLength(1);
+    expect(chat.search({ workspaceId: ws.id, query: '"nota fiscal"' }).hits).toHaveLength(1);
+    expect(chat.search({ workspaceId: ws.id, query: '"fiscal nota"' }).hits).toHaveLength(0);
+    expect(chat.search({ workspaceId: ws.id, query: 'nota inexistente' }).hits).toHaveLength(0);
+  });
+
+  it('com um projeto, só as conversas dele; sem projeto, as gerais e as de todos os projetos', async () => {
+    const { ws, project } = await withProject('Busca');
+    const general = await talk(ws.id, 'boleto do fornecedor', 'ok');
+    const inProject = await talk(ws.id, 'boleto no projeto', 'ok', project.id);
+    const all = chat.search({ workspaceId: ws.id, query: 'boleto' });
+    expect(all.hits.map((h) => h.conversationId).sort()).toEqual([general, inProject].sort());
+    const only = chat.search({ workspaceId: ws.id, query: 'boleto', projectId: project.id });
+    expect(only.hits.map((h) => [h.conversationId, h.projectId])).toEqual([[inProject, project.id]]);
+  });
+
+  it('nunca mostra conversas de outro Workspace nem arquivadas', async () => {
+    const a = workspaces.create({ name: 'A', ...base });
+    const b = workspaces.create({ name: 'B', ...base });
+    await talk(a.id, 'segredo da casa A', 'ok');
+    const archived = await talk(b.id, 'segredo arquivado B', 'ok');
+    await talk(b.id, 'segredo vivo B', 'ok');
+    chat.archive(archived);
+    expect(chat.search({ workspaceId: a.id, query: 'segredo' }).hits).toHaveLength(1);
+    const inB = chat.search({ workspaceId: b.id, query: 'segredo' });
+    expect(inB.hits).toHaveLength(1);
+    expect(inB.hits[0]!.text).toContain('vivo B');
+  });
+
+  it('acha pelo título quando nenhuma mensagem casa, e as mais recentes vêm primeiro', async () => {
+    const { ws } = await withProject('Busca');
+    let t = 0;
+    const clocked = makeChat({ now: () => new Date(Date.UTC(2026, 0, 1, 0, 0, t++)).toISOString() });
+    const old = await clocked.send({ workspaceId: ws.id, text: 'assunto qualquer' });
+    sessions.turns.at(-1)!.h.onDone(outcome('pronto'));
+    await clocked.rename(old.conversation.id, 'Relatório mensal');
+    const recent = await clocked.send({ workspaceId: ws.id, text: 'outro assunto' });
+    sessions.turns.at(-1)!.h.onDone(outcome('veja o relatório'));
+    const r = clocked.search({ workspaceId: ws.id, query: 'relatorio' });
+    expect(r.hits.map((h) => [h.conversationId, h.messageId === null])).toEqual([
+      [recent.conversation.id, false],
+      [old.conversation.id, true],
+    ]);
+    expect(r.hits[1]!.text).toBe('Relatório mensal');
+  });
+
+  it('limita os trechos por conversa e avisa que há mais', async () => {
+    const { ws } = await withProject('Busca');
+    const id = await talk(ws.id, 'repete repete', 'repete');
+    for (let i = 0; i < 9; i++) {
+      await chat.send({ workspaceId: ws.id, conversationId: id, text: `repete ${i}` });
+      sessions.turns.at(-1)!.h.onDone(outcome('ok'));
+    }
+    const r = chat.search({ workspaceId: ws.id, query: 'repete' });
+    expect(r.hits).toHaveLength(6);
+    expect(r.truncated).toBe(true);
+  });
+
+  it('não acha nada sem palavras úteis', () => {
+    const ws = workspaces.create({ name: 'Vazio', ...base });
+    expect(chat.search({ workspaceId: ws.id, query: '""' })).toEqual({ hits: [], truncated: false });
+  });
+});

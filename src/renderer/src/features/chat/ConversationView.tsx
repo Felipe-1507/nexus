@@ -10,6 +10,7 @@ import { ContinueDialog } from '@renderer/features/context/ContinueDialog';
 import { ModelPicker, modelName } from '@renderer/features/models/ModelPicker';
 import { useSetConversationModel } from '@renderer/features/models/queries';
 import { useProjects } from '@renderer/features/projects/queries';
+import { useSearch } from '@renderer/features/search/search-store';
 import { WorkspaceAvatar } from '@renderer/features/workspaces/appearance';
 import { invoke } from '@renderer/lib/ipc';
 import { useLayout } from '@renderer/app/shell/layout-store';
@@ -72,6 +73,26 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
   const [shown, setShown] = useState(PAGE_SIZE);
   useEffect(() => setShown(PAGE_SIZE), [conversationId]);
   const hidden = Math.max(0, list.length - shown);
+  const target = useSearch((s) => s.target);
+
+  // Veio de um resultado da busca: mostra mais mensagens se preciso, rola até a achada e a destaca por um instante.
+  useEffect(() => {
+    if (!target || !conversationId || target.conversationId !== conversationId) return;
+    const { done } = useSearch.getState();
+    if (!target.messageId) return done(target.nonce);
+    if (!messages.isSuccess) return;
+    const index = list.findIndex((m) => m.id === target.messageId);
+    if (index < 0) return done(target.nonce);
+    if (index < hidden) return setShown(list.length - index + 10);
+    const el = scroller.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(target.messageId)}"]`);
+    if (!el) return;
+    stickToBottom.current = false;
+    el.scrollIntoView({ block: 'center' });
+    el.dataset.found = 'true';
+    window.setTimeout(() => delete el.dataset.found, FOUND_MS);
+    done(target.nonce);
+  }, [target, conversationId, messages.isSuccess, messages.data, hidden]);
+
   const empty = !conversationId || (messages.isSuccess && list.length === 0 && !live);
   // "Desfazer" só na última resposta, e nunca durante uma resposta em andamento.
   const lastAssistantId = live ? undefined : list.findLast((m) => m.role === 'assistant')?.id;
@@ -272,6 +293,8 @@ function Thinking() {
 
 const EMPTY_QUEUE: never[] = [];
 const PAGE_SIZE = 100;
+/** Quanto tempo a mensagem achada pela busca fica em destaque (combina com a animação em styles.css). */
+const FOUND_MS = 2800;
 
 /** Mensagens que o usuário já escreveu e que esperam a resposta atual terminar. */
 function QueueList({

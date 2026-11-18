@@ -214,3 +214,26 @@ body {
 .md a.wikilink:hover {
   border-bottom-style: solid;
 }
+
+/* Mensagem que a busca acabou de mostrar: um brilho com a cor de destaque que some sozinho. */
+[data-found='true'] {
+  border-radius: 0.75rem;
+  animation: found-glow 2.6s ease-out;
+}
+@keyframes found-glow {
+  0%,
+  40% {
+    background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-found='true'] {
+    animation: none;
+    background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+}

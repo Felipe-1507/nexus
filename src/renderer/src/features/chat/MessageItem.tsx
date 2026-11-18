@@ -21,7 +21,7 @@ export function MessageItem({
 }) {
   if (message.role === 'user') {
     return (
-      <div className="group flex justify-end" data-testid="message-user">
+      <div className="group flex justify-end" data-testid="message-user" data-message-id={message.id}>
         <div className="max-w-[85%] space-y-2">
           {message.attachments.length > 0 && (
             <div className="flex flex-wrap justify-end gap-1.5" data-testid="message-attachments">
@@ -60,7 +60,7 @@ export function MessageItem({
     );
   }
   return (
-    <div className="group" data-testid="message-assistant" data-status={message.status}>
+    <div className="group" data-testid="message-assistant" data-status={message.status} data-message-id={message.id}>
       {message.content && <Markdown>{message.content}</Markdown>}
       {message.content && (
         <div className="mt-1 flex items-center gap-2">

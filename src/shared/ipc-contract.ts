@@ -29,6 +29,7 @@ import {
   planetStylesSchema,
 } from './knowledge';
 import { planetOverrideSchema } from './planets';
+import { searchInputSchema, searchResultSchema } from './search';
 import { usageSchema } from './usage';
 import { modelCatalogSchema, modelChoiceSchema, modelOptionSchema } from './models';
 import { DARK_VARIANT_IDS } from './palette';
@@ -172,6 +173,8 @@ export const ipcContract = {
     input: z.object({ conversationId: z.uuid() }),
     output: z.object({ added: z.number().int() }),
   },
+  /** Procura nas mensagens e nos títulos das conversas do Workspace (ou só nas de um projeto). Só lê o banco do Nexus. */
+  'conversations:search': { input: searchInputSchema, output: searchResultSchema },
   'chat:send': { input: sendMessageSchema, output: sendMessageResultSchema },
   'chat:interrupt': { input: z.object({ conversationId: z.uuid() }), output: z.null() },
   /** Guarda um arquivo colado ou arrastado no chat (dados em base64). O arquivo só vai ao Claude quando a mensagem é enviada. */

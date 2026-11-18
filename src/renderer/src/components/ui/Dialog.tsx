@@ -5,11 +5,13 @@ interface DialogProps {
   onClose: () => void;
   title: string;
   description?: string;
+  /** `wide` para diálogos com listas (resultados de busca). */
+  size?: 'md' | 'wide';
   children: ReactNode;
 }
 
 /** Diálogo modal sobre o `<dialog>` nativo: foco preso, Esc fecha e o fundo fica inerte sem biblioteca extra. */
-export function Dialog({ open, onClose, title, description, children }: DialogProps) {
+export function Dialog({ open, onClose, title, description, size = 'md', children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
       onClick={(e) => {
         if (e.target === ref.current) onClose(); // clique no fundo
       }}
-      className="m-auto w-full max-w-md rounded-2xl border border-border bg-surface p-0 text-text shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-[2px]"
+      className={`m-auto w-full ${size === 'wide' ? 'max-w-2xl' : 'max-w-md'} rounded-2xl border border-border bg-surface p-0 text-text shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-[2px]`}
     >
       {open && (
         <div className="p-6">
