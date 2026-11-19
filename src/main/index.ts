@@ -42,6 +42,8 @@ import { GlobalInstructions } from './core/context/global-instructions';
 import { KnowledgeService } from './core/knowledge/knowledge-service';
 import { PlanetStyleStore } from './core/knowledge/planet-styles';
 import { ProjectService } from './core/projects/project-service';
+import { WelcomeService } from './core/welcome/welcome-service';
+import { askClaudeOnce, type CreateOneShot } from './agent/ask-once';
 import { PermissionsService } from './core/permissions/permissions-service';
 import { WorkspaceService } from './core/workspaces/workspace-service';
 import { createEventBatcher } from './ipc/event-batcher';
@@ -53,6 +55,7 @@ import { contextHandlers } from './ipc/handlers/context';
 import { knowledgeHandlers } from './ipc/handlers/knowledge';
 import { permissionHandlers } from './ipc/handlers/permissions';
 import { projectHandlers } from './ipc/handlers/projects';
+import { welcomeHandlers } from './ipc/handlers/welcome';
 import { workspaceHandlers } from './ipc/handlers/workspaces';
 import { registerIpc } from './ipc/register';
 import { backupDatabase, openDatabase, type Database } from './persistence/db';
@@ -293,6 +296,58 @@ function bootstrap(): void {
     onNotice: (message, detail) => log.warn(message, detail),
   });
 
+  const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  const welcome = new WelcomeService({
+    prefs,
+    projects: async (workspaceId) =>
+      (await projects.list(workspaceId))
+        .filter((p) => p.status === 'ok')
+        .map(({ id, name, path }) => ({ id, name, path })),
+    notes: async (workspaceId) =>
+      (await notes.graph(workspaceId)).notes.map((n) => ({ title: n.title, system: n.system, mtimeMs: n.mtimeMs })),
+    conversations: (workspaceId) =>
+      chat
+        .listConversations(workspaceId)
+        .map((c) => ({ title: c.title, projectId: c.projectId, updatedAt: c.updatedAt })),
+    gitLog: async (dir, sinceIso) => {
+      // Só leitura. `safe.directory=*` evita o erro de "dono duvidoso" em pastas de rede; o tempo é curto de propósito.
+      const r = await runFile(
+        'git',
+        [
+          '-c',
+          'safe.directory=*',
+          '-C',
+          dir,
+          'log',
+          `--since=${sinceIso}`,
+          '--no-merges',
+          '--pretty=format:%s',
+          '-n',
+          '30',
+        ],
+        { timeoutMs: 8_000, env: gitEnv },
+      );
+      return r.ok ? r.stdout.split(/\r?\n/).filter((l) => l.trim() !== '') : [];
+    },
+    gitUser: async () => {
+      const r = await runFile('git', ['config', '--get', 'user.name'], { timeoutMs: 3_000, env: gitEnv });
+      return r.ok ? r.stdout.trim() || null : null;
+    },
+    summarize: async (system, prompt) => {
+      const status = await claude.get();
+      if (status.cli.state !== 'found' || !status.ready) return null;
+      return askClaudeOnce({
+        createQuery: ((args: unknown) => query(args as Parameters<typeof query>[0])) as unknown as CreateOneShot,
+        env: process.env,
+        cliPath: status.cli.path,
+        cwd: paths.userData,
+        system,
+        prompt,
+      });
+    },
+    onWarn: (message, detail) => log.warn(message, detail),
+  });
+
   const attachmentMaintenance = new AttachmentMaintenance({ workspaces, attachments, chat });
   // Depois da partida, sem atrasar a janela: apaga o que nunca foi enviado e já tem alguns dias.
   setTimeout(() => {
@@ -375,6 +430,8 @@ function bootstrap(): void {
           }
           return openSetupConsole('o login do Claude Code', loginCommand(status.cli.path));
         },
+        // Nunca vale para o app instalado.
+        ...welcomeHandlers(welcome, !app.isPackaged && process.env.NEXUS_NO_WELCOME === '1'),
         ...chatHandlers(chat, attachments, attachmentMaintenance),
         ...contextHandlers(chat),
         ...permissionHandlers({ chat, permissions, workspaces, reveal: (p) => shell.showItemInFolder(p) }),

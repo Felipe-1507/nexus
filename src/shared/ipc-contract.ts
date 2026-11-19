@@ -31,6 +31,7 @@ import {
 import { planetOverrideSchema } from './planets';
 import { searchInputSchema, searchResultSchema } from './search';
 import { usageSchema } from './usage';
+import { welcomeDueSchema, welcomeRecapSchema, welcomeSettingsSchema } from './welcome';
 import { modelCatalogSchema, modelChoiceSchema, modelOptionSchema } from './models';
 import { DARK_VARIANT_IDS } from './palette';
 import { claudeSessionSummarySchema, createProjectSchema, folderInspectionSchema, projectSchema } from './project';
@@ -134,6 +135,17 @@ export const ipcContract = {
   'galaxy:setQuality': { input: galaxyQualitySchema, output: z.object({ quality: galaxyQualitySchema }) },
   'galaxy:getLook': { input: z.undefined(), output: z.object({ look: galaxyLookSchema }) },
   'galaxy:setLook': { input: galaxyLookSchema, output: z.object({ look: galaxyLookSchema }) },
+  'welcome:settings': { input: z.undefined(), output: welcomeSettingsSchema },
+  'welcome:setSettings': { input: welcomeSettingsSchema.partial(), output: welcomeSettingsSchema },
+  /** A tela de boas-vindas deve aparecer? `force`: ignora "já viu hoje" e o interruptor. */
+  'welcome:due': { input: z.object({ force: z.boolean() }), output: welcomeDueSchema },
+  /** O resumo do período (pode levar alguns segundos quando o Claude reescreve o texto). */
+  'welcome:recap': {
+    input: z.object({ workspaceId: z.uuid(), since: z.string().max(40), label: z.string().max(60) }),
+    output: welcomeRecapSchema,
+  },
+  /** Marca a tela de hoje como vista. */
+  'welcome:seen': { input: z.undefined(), output: z.null() },
   'appearance:get': { input: z.undefined(), output: appearanceSchema },
   'appearance:set': { input: appearanceSchema.partial(), output: appearanceSchema },
   'workspaces:list': { input: z.undefined(), output: workspaceListSchema },

@@ -11,6 +11,7 @@ import { SearchHost } from '@renderer/features/search/SearchDialog';
 import { PrivacyNoticeHost } from '@renderer/features/privacy/PrivacyNotice';
 import { SettingsView } from '@renderer/features/settings/SettingsView';
 import { useAppearanceSync } from '@renderer/features/settings/queries';
+import { WelcomeHost } from '@renderer/features/welcome/WelcomeHost';
 import { WorkspaceDialogHost } from '@renderer/features/workspaces/WorkspaceDialog';
 import { ProjectView } from '@renderer/features/projects/ProjectView';
 import { WorkspaceView } from '@renderer/features/workspaces/WorkspaceView';
@@ -69,7 +70,7 @@ export function Shell() {
           </>
         )}
 
-        <main className="flex min-w-0 flex-1 flex-col bg-bg">
+        <main className="relative flex min-w-0 flex-1 flex-col bg-bg">
           <UpdateNotices />
           <ErrorBoundary key={layout.view} fallback={(error, reset) => <PanelError error={error} reset={reset} />}>
             {layout.view === 'settings' && <SettingsView />}
@@ -80,6 +81,7 @@ export function Shell() {
             {layout.view === 'galaxy' && <GalaxyScreen mode="full" />}
             {layout.view === 'sessions' && <SessionsOverview />}
           </ErrorBoundary>
+          <WelcomeHost />
         </main>
 
         {showRight && (

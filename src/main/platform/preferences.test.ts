@@ -25,6 +25,10 @@ describe('preferências', () => {
         seenModels: null,
         galaxyQuality: 'leve',
         galaxyLook: 'atual',
+        welcomeEnabled: true,
+        welcomeAi: true,
+        welcomeName: null,
+        welcomeLastAt: null,
         accent: null,
       },
     });
@@ -40,6 +44,10 @@ describe('preferências', () => {
       seenModels: ['opus', 'sonnet'],
       galaxyQuality: 'original' as const,
       galaxyLook: 'eclipse' as const,
+      welcomeEnabled: false,
+      welcomeAi: false,
+      welcomeName: 'Ana',
+      welcomeLastAt: '2026-11-18T12:00:00.000Z',
       accent: '#4f8cff',
     };
     savePreferences(file, prefs);
