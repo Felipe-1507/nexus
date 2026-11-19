@@ -38,7 +38,11 @@ export function planTour(graph: GalaxyGraph, layout: GalaxyLayout, maxSystems = 
 }
 
 /** Legenda da parada (o título e uma linha de contexto), para a tela. */
-export function describeStop(stop: TourStop, graph: GalaxyGraph, layout: GalaxyLayout): { title: string; detail: string } {
+export function describeStop(
+  stop: TourStop,
+  graph: GalaxyGraph,
+  layout: GalaxyLayout,
+): { title: string; detail: string } {
   if (stop.kind === 'overview') {
     const n = graph.notes.length;
     const s = layout.systems.length;
