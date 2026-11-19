@@ -655,3 +655,59 @@ test('painel Home: números do Workspace, atalhos para sistema e nota, conversas
     removeUserData(userData);
   }
 });
+
+test('estilo Eclipse: troca nas Configurações vale na hora, não mexe em posições nem na seleção e combina com Leve/Original', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Eclipse');
+    write(ws.knowledgeDir, 'Ideias/Roteiro.md', '# Roteiro\nVer [[Agenda]].\n');
+    write(ws.knowledgeDir, 'Ideias/Agenda.md', '# Agenda\n');
+    write(ws.knowledgeDir, 'Solta.md', '# Solta\n');
+
+    const panel = page.getByRole('complementary', { name: 'Painel lateral' });
+    await panel.getByRole('tab', { name: 'Galáxia' }).click();
+    const canvas = panel.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-planets', '3');
+    // O estilo de sempre é o padrão.
+    await expect(canvas).toHaveAttribute('data-look', 'atual');
+    const systems = await canvas.getAttribute('data-systems');
+    const search = panel.getByRole('combobox', { name: 'Buscar nota na galáxia' });
+    await search.fill('roteiro');
+    await search.press('Enter');
+    await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
+
+    const settings = () =>
+      page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('button', { name: 'Configurações' });
+    await settings().click();
+    const looks = page.getByRole('radiogroup', { name: 'Estilo da galáxia' });
+    await expect(looks.getByRole('radio', { name: /Atual/ })).toHaveAttribute('aria-checked', 'true');
+    await looks.getByRole('radio', { name: /Eclipse/ }).click();
+    await expect(looks.getByRole('radio', { name: /Eclipse/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(canvas).toHaveAttribute('data-look', 'eclipse');
+    // Só o centro mudou: planetas, sistemas e seleção ficam como estavam.
+    await expect(canvas).toHaveAttribute('data-planets', '3');
+    await expect(canvas).toHaveAttribute('data-systems', systems!);
+    await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
+
+    // Combina com o modo Original (estilo e qualidade são escolhas independentes).
+    const modes = page.getByRole('radiogroup', { name: 'Modo da galáxia' });
+    await modes.getByRole('radio', { name: /Original/ }).click();
+    await expect(canvas).toHaveAttribute('data-quality', 'original');
+    await expect(canvas).toHaveAttribute('data-look', 'eclipse');
+
+    // Fica guardado e voltar ao estilo atual não perde nada.
+    await page.reload();
+    await page.getByTestId('chat-view').waitFor();
+    await panel.getByRole('tab', { name: 'Galáxia' }).click();
+    await expect(canvas).toHaveAttribute('data-look', 'eclipse');
+    await expect(canvas).toHaveAttribute('data-quality', 'original');
+    await settings().click();
+    await looks.getByRole('radio', { name: /Atual/ }).click();
+    await expect(canvas).toHaveAttribute('data-look', 'atual');
+    await expect(canvas).toHaveAttribute('data-planets', '3');
+    await expect(canvas).toHaveAttribute('data-systems', systems!);
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});

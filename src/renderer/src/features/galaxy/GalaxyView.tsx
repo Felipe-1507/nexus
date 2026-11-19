@@ -29,7 +29,7 @@ import { invoke } from '@renderer/lib/ipc';
 import { GalaxyScene } from './galaxy-scene';
 import { layoutGalaxy, matchNotes, noteInVault, searchNotes } from './layout';
 import { DEFAULT_GALAXY_QUALITY, GALAXY_PROFILES } from './quality';
-import { useGalaxyQuality } from '@renderer/features/settings/queries';
+import { useGalaxyLook, useGalaxyQuality } from '@renderer/features/settings/queries';
 import { PlanetEditor } from './PlanetEditor';
 import { MOON_COLORS, MOON_LABELS, moonKind, moonName } from './moon-effects';
 import { describeStop, type TourStop } from './explore';
@@ -115,6 +115,9 @@ function Galaxy({
   const profile = GALAXY_PROFILES[useGalaxyQuality().data?.quality ?? DEFAULT_GALAXY_QUALITY];
   const profileRef = useRef(profile);
   profileRef.current = profile;
+  const look = useGalaxyLook().data?.look ?? 'atual';
+  const lookRef = useRef(look);
+  lookRef.current = look;
   const sunRef = useRef(sun);
   sunRef.current = sun;
 
@@ -135,7 +138,7 @@ function Galaxy({
           },
           onTour: setTour,
         },
-        { reducedMotion, openOnClick: !panel, profile: profileRef.current },
+        { reducedMotion, openOnClick: !panel, profile: profileRef.current, look: lookRef.current },
       );
       scene.current.setSun(sunRef.current.name, sunRef.current.color);
     } catch (err) {
@@ -187,6 +190,11 @@ function Galaxy({
   useEffect(() => {
     scene.current?.setProfile(profile);
   }, [profile]);
+
+  // Idem para o estilo (Atual ou Eclipse): só o centro muda; posições e seleção ficam.
+  useEffect(() => {
+    scene.current?.setLook(look);
+  }, [look]);
 
   // Eventos reais (G5): o Claude editando uma nota manda uma nave até ela; nota alterada no disco pulsa.
   useEffect(() => {

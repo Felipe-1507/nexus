@@ -318,6 +318,8 @@ function bootstrap(): void {
         'preferences:setTheme': (theme) => ({ theme: prefs.update({ theme }).theme }),
         'galaxy:getQuality': () => ({ quality: prefs.get().galaxyQuality }),
         'galaxy:setQuality': (quality) => ({ quality: prefs.update({ galaxyQuality: quality }).galaxyQuality }),
+        'galaxy:getLook': () => ({ look: prefs.get().galaxyLook }),
+        'galaxy:setLook': (look) => ({ look: prefs.update({ galaxyLook: look }).galaxyLook }),
         'appearance:get': () => ({ darkVariant: prefs.get().darkVariant, accent: prefs.get().accent }),
         'appearance:set': (patch) => {
           const next = prefs.update(patch);

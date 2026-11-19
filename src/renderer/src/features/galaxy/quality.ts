@@ -30,6 +30,8 @@ export interface GalaxyProfile {
   /** Intervalo médio entre estrelas cadentes e entre cometas, em segundos. */
   shootingStarEverySec: number;
   cometEverySec: number;
+  /** Núcleo Eclipse (estilo "Eclipse"): grãos de poeira, camadas de ruído do disco e segmentos do anel. */
+  eclipse: { dust: number; octaves: number; segments: number };
   /** Limites para os efeitos das próximas etapas (G2 em diante). */
   limits: {
     ambientShips: number;
@@ -57,6 +59,7 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     sunLayers: 3,
     nearStars: 1400,
     rim: 1,
+    eclipse: { dust: 2600, octaves: 3, segments: 128 },
     shootingStarEverySec: 12,
     cometEverySec: 9,
     limits: {
@@ -80,6 +83,7 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     sunLayers: 2,
     nearStars: 450,
     rim: 0.6,
+    eclipse: { dust: 700, octaves: 2, segments: 64 },
     shootingStarEverySec: 30,
     cometEverySec: 22,
     limits: {

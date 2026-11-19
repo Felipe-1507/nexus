@@ -1,7 +1,8 @@
 import { ArrowLeft, FolderOpen, Monitor, Moon, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { BRAND } from '@shared/brand';
-import type { GalaxyQuality, OpenablePath, Theme } from '@shared/ipc-contract';
+import { PALETTE } from '@shared/brand';
+import type { GalaxyLook, GalaxyQuality, OpenablePath, Theme } from '@shared/ipc-contract';
 import { IconButton } from '@renderer/components/ui/IconButton';
 import { useLayout } from '@renderer/app/shell/layout-store';
 import { ClaudeStatusPanel } from '@renderer/features/claude/ClaudeStatusPanel';
@@ -11,7 +12,16 @@ import { AppearanceColors } from './AppearanceColors';
 import { AttachmentsSection } from './AttachmentsSection';
 import { GlobalInstructions } from './GlobalInstructions';
 import { cn } from '@renderer/lib/cn';
-import { useAppInfo, useGalaxyQuality, useOpenPath, usePreferences, useSetGalaxyQuality, useSetTheme } from './queries';
+import {
+  useAppInfo,
+  useGalaxyLook,
+  useGalaxyQuality,
+  useSetGalaxyLook,
+  useOpenPath,
+  usePreferences,
+  useSetGalaxyQuality,
+  useSetTheme,
+} from './queries';
 
 const themes: Array<{ id: Theme; label: string; icon: ReactNode }> = [
   { id: 'system', label: 'Sistema', icon: <Monitor size={16} /> },
@@ -91,8 +101,97 @@ function Appearance() {
         </p>
       )}
       <AppearanceColors />
+      <GalaxyLookPicker />
       <GalaxyQualityPicker />
     </Section>
+  );
+}
+
+const GALAXY_LOOKS: Array<{ id: GalaxyLook; label: string; description: string }> = [
+  {
+    id: 'atual',
+    label: 'Atual',
+    description: 'Um sol no centro, com os sistemas girando em volta dele.',
+  },
+  {
+    id: 'eclipse',
+    label: 'Eclipse',
+    description: 'Um buraco negro no centro, com disco de luz e poeira em órbita. Combina com os dois modos abaixo.',
+  },
+];
+
+/** Miniatura do centro de cada estilo, desenhada com as cores da galáxia (nenhuma imagem guardada). */
+function LookPreview({ look }: { look: GalaxyLook }) {
+  const [gold, , sky, , amber] = PALETTE.galaxy;
+  return (
+    <svg viewBox="0 0 120 64" aria-hidden className="h-16 w-full rounded-lg bg-[#05050b]">
+      <defs>
+        <radialGradient id={`look-glow-${look}`}>
+          <stop offset="0%" stopColor={gold} stopOpacity="0.9" />
+          <stop offset="100%" stopColor={gold} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      {[0.12, 0.28, 0.52, 0.77, 0.91].map((x, i) => (
+        <circle key={i} cx={x * 120} cy={[10, 52, 14, 50, 26][i]} r="0.8" fill="#ffffff" opacity="0.5" />
+      ))}
+      {look === 'atual' ? (
+        <>
+          <ellipse cx="60" cy="32" rx="46" ry="14" fill="none" stroke={sky} strokeOpacity="0.35" />
+          <circle cx="104" cy="30" r="2.4" fill={sky} />
+          <circle cx="22" cy="36" r="2" fill={amber} />
+          <circle cx="60" cy="32" r="22" fill={`url(#look-glow-${look})`} />
+          <circle cx="60" cy="32" r="8" fill={gold} />
+        </>
+      ) : (
+        <>
+          <circle cx="60" cy="32" r="22" fill={`url(#look-glow-${look})`} opacity="0.35" />
+          <ellipse cx="60" cy="32" rx="34" ry="9" fill="none" stroke={amber} strokeWidth="5" strokeOpacity="0.55" />
+          <ellipse cx="60" cy="32" rx="34" ry="9" fill="none" stroke={gold} strokeWidth="1.6" strokeOpacity="0.9" />
+          <path d="M42 28 Q60 8 78 28" fill="none" stroke={gold} strokeWidth="2" strokeOpacity="0.85" />
+          <circle cx="60" cy="32" r="11" fill="#000000" />
+          <circle cx="60" cy="32" r="11" fill="none" stroke={gold} strokeWidth="1.2" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function GalaxyLookPicker() {
+  const look = useGalaxyLook();
+  const set = useSetGalaxyLook();
+  const current = set.isPending ? set.variables : look.data?.look;
+  return (
+    <div className="mt-6">
+      <p className="text-xs font-medium">Estilo da galáxia</p>
+      <p className="mt-0.5 text-xs text-muted">
+        Muda só o centro e o ambiente. Posições, planetas e personalizações continuam iguais, e a troca vale na hora.
+      </p>
+      <div role="radiogroup" aria-label="Estilo da galáxia" className="mt-2 grid grid-cols-2 gap-2">
+        {GALAXY_LOOKS.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            role="radio"
+            aria-checked={current === l.id}
+            disabled={!look.data}
+            onClick={() => set.mutate(l.id)}
+            className={cn(
+              'rounded-xl border p-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-accent',
+              current === l.id ? 'border-accent bg-accent-soft' : 'border-border hover:bg-surface-2',
+            )}
+          >
+            <LookPreview look={l.id} />
+            <span className="mt-2 block text-sm">{l.label}</span>
+            <span className="mt-0.5 block text-xs leading-5 text-muted">{l.description}</span>
+          </button>
+        ))}
+      </div>
+      {set.isError && (
+        <p role="alert" className="mt-2 text-xs text-danger">
+          Não foi possível salvar o estilo da galáxia: {set.error.message}
+        </p>
+      )}
+    </div>
   );
 }
 
