@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 import { launchApp, removeUserData } from './launch';
 
 // Segundo plano: fechar a janela não encerra o Nexus; só o menu do ícone, depois de confirmar.
@@ -44,11 +46,16 @@ test('fechar a janela esconde o Nexus; o ícone traz de volta; fechar de vez ped
     expect(exited).toBe(false);
     expect(await visible()).toBe(true);
 
+    // Enquanto roda, a marca de execução existe (é como o próximo início percebe uma queda).
+    expect(fs.existsSync(path.join(userData, 'running.json'))).toBe(true);
+
     // Confirmar encerra de verdade.
     const closed = new Promise<void>((resolve) => app.on('close', () => resolve()));
     void ask(0).catch(() => undefined);
     await closed;
     expect(exited).toBe(true);
+    // Fechou direito: a marca foi apagada.
+    expect(fs.existsSync(path.join(userData, 'running.json'))).toBe(false);
   } finally {
     if (!exited) await app.close();
     removeUserData(userData);

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, Menu, nativeImage, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, crashReporter, dialog, Menu, nativeImage, session, shell } from 'electron';
 import {
   deleteSession,
   forkSession,
@@ -61,6 +61,7 @@ import { resolveAppPaths } from './platform/paths';
 import { loadPreferences } from './platform/preferences';
 import { PreferencesStore } from './platform/preferences-store';
 import { runFile } from './platform/run';
+import { startMarker, takePreviousMarker } from './platform/run-marker';
 import { createWatcher } from './fs/watcher';
 import { createBackgroundMode, type BackgroundMode } from './window/background';
 import { createMainWindow } from './window/main-window';
@@ -87,9 +88,16 @@ if (!app.isPackaged && process.env.NEXUS_USER_DATA_DIR) {
 
 registerAppScheme();
 
+// Se o Nexus cair sem avisar, o Chromium deixa o relatório da queda nesta máquina (nada é enviado a lugar nenhum).
+crashReporter.start({ uploadToServer: false, compress: true });
+
 // Falhas sem tratamento vão para o log em vez de derrubar o app com a caixa de erro padrão do Electron.
 process.on('uncaughtException', (err) => log.error('Erro não tratado no main', err));
 process.on('unhandledRejection', (reason) => log.error('Promise rejeitada sem tratamento no main', reason));
+process.on('exit', (code) => log.info('Processo principal saindo', { code }));
+app.on('render-process-gone', (_event, contents, details) =>
+  log.warn('Processo de tela encerrou', { reason: details.reason, exitCode: details.exitCode, url: contents.getURL() }),
+);
 app.on('child-process-gone', (_event, details) => {
   if (details.reason !== 'clean-exit') log.warn('Processo auxiliar do Electron encerrou', details);
 });
@@ -101,10 +109,20 @@ let knowledge: KnowledgeService | undefined;
 let codeWatcher: CodeWatcher | undefined;
 let mainWindow: BrowserWindow | undefined;
 let background: BackgroundMode | undefined;
+let runMarker: { stop: () => void } | undefined;
 
 function bootstrap(): void {
   const userData = app.getPath('userData');
   fs.mkdirSync(userData, { recursive: true });
+  // A execução anterior terminou sem passar pelo encerramento normal? Fica no log, com a última hora em que esteve viva.
+  const fell = takePreviousMarker(userData);
+  if (fell) {
+    log.warn('A execução anterior terminou sem fechar direito (queda do Nexus, do Windows ou da placa de vídeo)', {
+      iniciouEm: fell.startedAt,
+      ultimoSinal: fell.lastAlive,
+    });
+  }
+  runMarker = startMarker(userData);
   const prefsFile = resolveAppPaths(userData, app.getPath('home'), null).preferences;
   const { preferences, warning } = loadPreferences(prefsFile);
   const paths = resolveAppPaths(userData, app.getPath('home'), preferences.dataRoot);
@@ -455,6 +473,7 @@ function openWindow(splash: Splash | null): void {
   });
   mainWindow = win;
   background?.attach(win);
+  win.on('session-end', () => log.warn('O Windows está encerrando a sessão (session-end)'));
   watchWindowHealth(win, { log, showMessageBox: (w, options) => dialog.showMessageBox(w, options) });
 }
 
@@ -492,6 +511,7 @@ if (!app.requestSingleInstanceLock()) {
     codeWatcher?.close();
     background?.dispose();
     database?.db.close();
+    runMarker?.stop();
     log.info('Encerramento limpo');
   };
   app.on('before-quit', () => {
