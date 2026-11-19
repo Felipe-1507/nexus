@@ -1179,7 +1179,9 @@ export class GalaxyScene {
     const moon = this.hoveredMoon === null ? undefined : this.moons[this.hoveredMoon];
     const center = moon ? this.layout.notes[moon.note] : undefined;
     if (moon && center) {
-      const s = this.project(moonPosition(new Vector3(), moon, center, this.time.value).add(new Vector3(0, moon.size * 2, 0)));
+      const s = this.project(
+        moonPosition(new Vector3(), moon, center, this.time.value).add(new Vector3(0, moon.size * 2, 0)),
+      );
       this.hoverLabel.classList.toggle('hidden', !s.visible);
       this.hoverLabel.textContent = `${MOON_LABELS[moonKind(moon.name)]}: ${moonName(moon.name)}`;
       this.hoverLabel.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, -100%)`;

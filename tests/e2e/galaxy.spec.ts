@@ -590,3 +590,68 @@ test('sol no centro: leva o nome do Workspace e o núcleo (notas soltas) orbita 
     removeUserData(userData);
   }
 });
+
+test('painel Home: números do Workspace, atalhos para sistema e nota, conversas recentes, Esc fecha sem mexer na cena', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Painel');
+    const vault = ws.knowledgeDir;
+    write(vault, 'Trabalho/Conciliação.md', '# Conciliação\nVer [[Bancos]] e [[Ideias]].\n');
+    write(vault, 'Trabalho/Bancos.md', '# Bancos\nUsado na [[Conciliação]].\n');
+    write(vault, 'Ideias.md', '# Ideias\n');
+    write(vault, 'Pessoal/Leituras.md', '# Leituras\n[[Ideias]]\n');
+    write(vault, 'Pessoal/Solta.md', '# Solta\n');
+
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    await expect(canvas).toHaveAttribute('data-planets', '5');
+    const positions = await canvas.getAttribute('data-systems');
+
+    const home = page.getByRole('region', { name: 'Painel da galáxia' });
+    await expect(home).toBeHidden();
+    await page.getByTestId('galaxy-home-toggle').click();
+    await expect(home).toBeVisible();
+
+    // Números vindos do grafo: 5 notas, 4 rotas, 2 sistemas (o núcleo não conta), todas alteradas agora.
+    const kpis = home.getByTestId('home-kpis');
+    await expect(kpis).toContainText('Notas');
+    await expect(kpis.getByText('5', { exact: true }).first()).toBeVisible();
+    await expect(kpis).toContainText('1 sem ligação');
+    await expect(kpis).toContainText('Na semana');
+    await expect(home.getByTestId('home-systems')).toContainText('Trabalho');
+    await expect(home.getByTestId('home-systems')).toContainText('Pessoal');
+    await expect(home.getByTestId('home-connected')).toContainText('Ideias');
+    await expect(home.getByTestId('home-recent-notes')).toContainText('Núcleo');
+    await expect(home.getByTestId('home-recent-conversations')).toContainText('Nenhuma conversa ainda');
+
+    // Clicar num sistema leva a câmera até ele; clicar numa nota a seleciona (o cartão vai para a direita).
+    await home
+      .getByTestId('home-systems')
+      .getByRole('button', { name: /Trabalho/ })
+      .click();
+    await expect(canvas).toHaveAttribute('data-flying', 'true');
+    await expect(canvas).toHaveAttribute('data-flying', 'false');
+    await home
+      .getByTestId('home-connected')
+      .getByRole('button', { name: /Ideias/ })
+      .click();
+    await expect(canvas).toHaveAttribute('data-selected', 'Ideias.md');
+    await expect(page.getByRole('region', { name: 'Planeta selecionado' })).toBeVisible();
+
+    // O painel não refaz a cena: a galáxia segue com os mesmos planetas e sistemas.
+    await expect(canvas).toHaveAttribute('data-planets', '5');
+    await expect(canvas).toHaveAttribute('data-systems', positions!);
+
+    // Esc fecha; abrir de novo funciona.
+    await page.keyboard.press('Escape');
+    await expect(home).toBeHidden();
+    await page.getByTestId('galaxy-home-toggle').click();
+    await expect(home).toBeVisible();
+    await home.getByRole('button', { name: 'Fechar o painel' }).click();
+    await expect(home).toBeHidden();
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});

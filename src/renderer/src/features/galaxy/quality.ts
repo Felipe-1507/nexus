@@ -59,7 +59,15 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     rim: 1,
     shootingStarEverySec: 12,
     cometEverySec: 9,
-    limits: { ambientShips: 6, activityShips: 4, comets: 4, flowingRoutes: 200, pulses: 24, moonsPerPlanet: 6, moons: 600 },
+    limits: {
+      ambientShips: 6,
+      activityShips: 4,
+      comets: 4,
+      flowingRoutes: 200,
+      pulses: 24,
+      moonsPerPlanet: 6,
+      moons: 600,
+    },
   },
   leve: {
     quality: 'leve',
@@ -74,7 +82,15 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     rim: 0.6,
     shootingStarEverySec: 30,
     cometEverySec: 22,
-    limits: { ambientShips: 2, activityShips: 2, comets: 1, flowingRoutes: 40, pulses: 8, moonsPerPlanet: 3, moons: 150 },
+    limits: {
+      ambientShips: 2,
+      activityShips: 2,
+      comets: 1,
+      flowingRoutes: 40,
+      pulses: 8,
+      moonsPerPlanet: 3,
+      moons: 150,
+    },
   },
 };
 

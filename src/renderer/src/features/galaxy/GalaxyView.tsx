@@ -1,4 +1,18 @@
-import { FileText, FolderOpen, Focus, Orbit, Palette, Paperclip, Route, Search, SkipForward, Sparkles, X } from 'lucide-react';
+import {
+  FileText,
+  FolderOpen,
+  Focus,
+  LayoutDashboard,
+  Orbit,
+  Palette,
+  Paperclip,
+  Route,
+  Search,
+  SkipForward,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PALETTE } from '@shared/brand';
 import { CHAT_EVENT_CHANNEL, type ChatEvent } from '@shared/chat';
@@ -19,6 +33,10 @@ import { useGalaxyQuality } from '@renderer/features/settings/queries';
 import { PlanetEditor } from './PlanetEditor';
 import { MOON_COLORS, MOON_LABELS, moonKind, moonName } from './moon-effects';
 import { describeStop, type TourStop } from './explore';
+import { HomePanel } from './HomePanel';
+import { computeHomeStats } from './home-stats';
+import { useChat } from '@renderer/features/chat/chat-store';
+import type { Conversation } from '@shared/chat';
 
 /** `full`: tela principal (clicar num planeta abre a nota). `panel`: aba do painel direito, ao lado do chat. */
 export type GalaxyMode = 'full' | 'panel';
@@ -72,6 +90,8 @@ function Galaxy({
   // Exploração (G9): parada atual do tour e modo contemplativo.
   const [tour, setTour] = useState<{ index: number; total: number; stop: TourStop } | null>(null);
   const [contemplative, setContemplative] = useState(false);
+  // Painel Home (GE1): números e atalhos sobre a galáxia. Só na tela principal; abrir e fechar não mexe na cena.
+  const [home, setHome] = useState(false);
   const [awake, setAwake] = useState(true);
   const sleepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openAttachment = useRef((note: string, name: string, reveal = false) => {
@@ -148,9 +168,12 @@ function Galaxy({
     return () => window.removeEventListener('keydown', onKey);
   }, [tour, contemplative]);
 
-  useEffect(() => () => {
-    if (sleepTimer.current) clearTimeout(sleepTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (sleepTimer.current) clearTimeout(sleepTimer.current);
+    },
+    [],
+  );
 
   /** No modo contemplativo, o botão de sair só aparece quando o mouse se mexe. */
   function wakeControls() {
@@ -193,6 +216,30 @@ function Galaxy({
   }, [graph.data, layout, styles]);
 
   const data = graph.data;
+  const homeStats = useMemo(() => (home && data ? computeHomeStats(data, Date.now()) : null), [home, data]);
+  const conversations = useQuery({
+    queryKey: ['conversations', workspaceId, 'todas'],
+    queryFn: () => invoke('conversations:list', { workspaceId }),
+    enabled: home,
+  });
+  const systemColors = useMemo(() => new Map(layout?.systems.map((s) => [s.name, s.color]) ?? []), [layout]);
+
+  function openConversation(c: Conversation) {
+    const chat = useChat.getState();
+    chat.setScope(workspaceId, c.projectId);
+    chat.select(workspaceId, c.id);
+    useLayout.getState().setView('chat');
+  }
+
+  // Esc fecha o painel Home (o tour e o modo contemplativo têm o próprio Esc).
+  useEffect(() => {
+    if (!home) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !tour && !contemplative) setHome(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [home, tour, contemplative]);
   const note = selected === null ? undefined : data?.notes[selected];
 
   return (
@@ -250,6 +297,18 @@ function Galaxy({
             role="toolbar"
             aria-label="Explorar a galáxia"
           >
+            {!panel && (
+              <button
+                type="button"
+                className={TOOL_BUTTON}
+                title="Painel com os números do Workspace e atalhos para a galáxia (Esc fecha)"
+                onClick={() => setHome((v) => !v)}
+                aria-pressed={home}
+                data-testid="galaxy-home-toggle"
+              >
+                <LayoutDashboard size={14} /> Painel
+              </button>
+            )}
             <button
               type="button"
               className={TOOL_BUTTON}
@@ -296,12 +355,25 @@ function Galaxy({
         </>
       )}
 
+      {home && homeStats && !panel && !contemplative && (
+        <HomePanel
+          stats={homeStats}
+          systemColors={systemColors}
+          conversations={(conversations.data ?? []).slice(0, 6)}
+          now={Date.now()}
+          onFocusNote={(i) => scene.current?.focus(i)}
+          onFrameSystem={(indices) => scene.current?.frameNotes(indices)}
+          onOpenConversation={openConversation}
+          onClose={() => setHome(false)}
+        />
+      )}
+
       {note && selected !== null && !contemplative && (
         <section
           aria-label="Planeta selecionado"
           className={cn(
             'absolute rounded-2xl border border-white/10 bg-black/60 p-4 backdrop-blur',
-            panel ? 'right-3 bottom-3 left-3' : 'bottom-4 left-4 w-72',
+            panel ? 'right-3 bottom-3 left-3' : home ? 'right-4 bottom-4 w-72' : 'bottom-4 left-4 w-72',
           )}
         >
           <p className="text-sm font-semibold break-words">{note.title}</p>
