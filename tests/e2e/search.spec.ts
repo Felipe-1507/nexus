@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { launchApp, removeUserData } from './launch';
@@ -39,7 +40,10 @@ async function launchSeeded() {
   const first = await launchApp();
   const ws = (await first.page.evaluate(() =>
     window.nexus.invoke('workspaces:create', { name: 'Trabalho', color: 'violet', icon: 'layers' }),
-  )) as { ok: true; data: { id: string; rootPath: string } };
+  )) as { ok: true; data: { id: string; rootPath: string; knowledgeDir: string } };
+  // Uma nota do vault com a mesma palavra das conversas: a busca da galáxia mostra as duas coisas.
+  fs.mkdirSync(ws.data.knowledgeDir, { recursive: true });
+  fs.writeFileSync(path.join(ws.data.knowledgeDir, 'Boletos do fornecedor.md'), '# Boletos do fornecedor\n');
   const project = (await first.page.evaluate(
     (id) => window.nexus.invoke('projects:create', { kind: 'managed', workspaceId: id, name: 'Alfa' }),
     ws.data.id,
@@ -172,6 +176,47 @@ test('o teclado basta: Enter abre o primeiro resultado e Esc fecha a janela', as
     await expect(dialog(page)).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(dialog(page)).toBeHidden();
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
+test('busca única na galáxia: notas e conversas na mesma lista; o trecho abre a conversa na mensagem certa', async () => {
+  const { app, page, userData } = await launchSeeded();
+  try {
+    await page
+      .getByRole('navigation', { name: 'Navegação principal' })
+      .getByRole('button', { name: 'Galáxia' })
+      .click();
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    const search = page.getByRole('combobox', { name: 'Buscar nota na galáxia' });
+    await search.fill('boleto');
+
+    // Notas (por título) e conversas (por conteúdo) aparecem juntas; a nota acende na galáxia.
+    const list = page.getByRole('listbox', { name: 'Resultados da busca' });
+    await expect(list.getByTestId('search-note')).toHaveCount(1);
+    await expect(list.getByTestId('search-note')).toContainText('Boletos do fornecedor');
+    await expect(list.getByTestId('search-chat').first()).toBeVisible();
+    await expect(list.getByTestId('search-chat').filter({ hasText: 'situação' })).toHaveCount(1);
+    await expect(page.getByTestId('search-count')).toHaveText('1 nota acesa na galáxia');
+    // Tem destaque nas palavras achadas.
+    await expect(list.locator('mark').first()).toHaveText(/boleto/i);
+
+    // Escolher o trecho de uma conversa abre o chat e destaca a mensagem.
+    await list.getByTestId('search-chat').filter({ hasText: 'situação' }).click();
+    await expect(page.getByTestId('chat-view')).toBeVisible();
+    await expect(page.getByTestId('message-user').first()).toContainText('situação do boleto');
+    await expect(page.getByTestId('message-user').first()).toHaveAttribute('data-found', 'true');
+
+    // Com #tag só notas entram (tag não existe em conversa).
+    await page
+      .getByRole('navigation', { name: 'Navegação principal' })
+      .getByRole('button', { name: 'Galáxia' })
+      .click();
+    await search.fill('#trabalho');
+    await expect(list.getByTestId('search-chat')).toHaveCount(0);
   } finally {
     await app.close();
     removeUserData(userData);

@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react';
 import { AttachmentChip } from './AttachmentChip';
 import { useChat } from './chat-store';
 import { CopyButton } from './CopyButton';
-import type { Activity, ChatMessage } from '@shared/chat';
+import type { Activity, ApiRetry, ChatMessage } from '@shared/chat';
 import { Markdown } from '@renderer/components/Markdown';
 import { cn } from '@renderer/lib/cn';
 import { formatFullTime, formatMessageTime } from '@renderer/lib/format-time';
 import { ChangedFiles } from './ChangedFiles';
+import { describeBigContext, describeRetry } from './live-hints';
 
 export function MessageItem({
   message,
@@ -109,12 +110,15 @@ export function Details({
   usage,
   model,
   live,
+  contextTokens,
 }: {
   activities: Activity[];
   usage?: ChatMessage['usage'];
   model?: string | null;
   /** Resposta em andamento: o botão aparece mesmo sem passos e mostra há quanto tempo o Claude trabalha. */
-  live?: { startedAt: number; lastEventAt: number };
+  live?: { startedAt: number; lastEventAt: number; retry?: ApiRetry };
+  /** Tamanho atual do contexto da conversa (se medido): explica demoras de conversas muito grandes. */
+  contextTokens?: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const now = useNow(Boolean(live));
@@ -135,7 +139,7 @@ export function Details({
           </span>
         )}
       </button>
-      {live && <LiveStatus live={live} now={now} />}
+      {live && <LiveStatus live={live} now={now} contextTokens={contextTokens} />}
       {open && (
         <div className="mt-2 space-y-1.5 border-l border-border pl-3" data-testid="message-details">
           {live && activities.length === 0 && <p className="text-xs text-muted">Ainda sem passos registrados.</p>}
@@ -194,19 +198,41 @@ export function formatElapsed(seconds: number): string {
   return `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s`;
 }
 
-function LiveStatus({ live, now }: { live: { startedAt: number; lastEventAt: number }; now: number }) {
+function LiveStatus({
+  live,
+  now,
+  contextTokens,
+}: {
+  live: { startedAt: number; lastEventAt: number; retry?: ApiRetry };
+  now: number;
+  contextTokens?: number | null;
+}) {
   const working = Math.max(0, Math.round((now - live.startedAt) / 1000));
   const quiet = Math.max(0, Math.round((now - live.lastEventAt) / 1000));
+  const stalled = quiet >= QUIET_WARNING_S;
+  const big = stalled ? describeBigContext(contextTokens) : null;
   return (
-    <p className="mt-1 text-[11px] text-muted" data-testid="live-status" aria-live="off">
-      Trabalhando há {formatElapsed(working)} · último sinal há {formatElapsed(quiet)}
-      {quiet >= QUIET_WARNING_S && (
-        <span className="text-amber-500">
-          {' '}
-          · sem novidades há um tempo: ele pode estar numa etapa longa. Se quiser, use o botão de parar.
-        </span>
+    <div className="mt-1 space-y-0.5 text-[11px] text-muted" data-testid="live-status" aria-live="off">
+      <p>
+        Trabalhando há {formatElapsed(working)} · último sinal há {formatElapsed(quiet)}
+        {stalled && !live.retry && (
+          <span className="text-amber-500">
+            {' '}
+            · sem novidades há um tempo: ele pode estar numa etapa longa. Se quiser, use o botão de parar.
+          </span>
+        )}
+      </p>
+      {live.retry && (
+        <p className="text-amber-500" data-testid="live-retry">
+          {describeRetry(live.retry)} Se quiser, use o botão de parar.
+        </p>
       )}
-    </p>
+      {big && (
+        <p className="text-amber-500" data-testid="live-big-context">
+          {big}
+        </p>
+      )}
+    </div>
   );
 }
 

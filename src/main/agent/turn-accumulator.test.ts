@@ -330,3 +330,45 @@ describe('describeTool', () => {
     expect(describeTool('Desconhecida', {}).label).toBe('Usou Desconhecida');
   });
 });
+
+describe('nova tentativa do Claude Code (api_retry)', () => {
+  const retryMessage = (extra: Record<string, unknown> = {}) =>
+    ({
+      type: 'system',
+      subtype: 'api_retry',
+      attempt: 2,
+      max_retries: 10,
+      retry_delay_ms: 8000,
+      error_status: 529,
+      error: 'overloaded',
+      uuid: 'u',
+      session_id: 's',
+      ...extra,
+    }) as never;
+
+  it('vira um evento para a tela, sem ser resposta nem passo', () => {
+    const events: TurnEvent[] = [];
+    const acc = new TurnAccumulator((e) => events.push(e));
+    acc.push(retryMessage());
+    expect(events).toEqual([
+      {
+        type: 'retry',
+        retry: { attempt: 2, maxRetries: 10, delayMs: 8000, status: 529, error: 'overloaded', noResponseMs: null },
+      },
+    ]);
+    expect(acc.done).toBeNull();
+  });
+
+  it('quando a API nem começou a responder, informa há quanto tempo esperou', () => {
+    const events: TurnEvent[] = [];
+    const acc = new TurnAccumulator((e) => events.push(e));
+    acc.push(
+      retryMessage({
+        error: 'unknown',
+        error_status: null,
+        no_response: { waited_ms: 600_000, retry_wait_ms: 60_000 },
+      }),
+    );
+    expect(events[0]).toMatchObject({ type: 'retry', retry: { noResponseMs: 600_000, status: null } });
+  });
+});

@@ -9,10 +9,12 @@ import {
   MeshBasicMaterial,
   PlaneGeometry,
   Points,
+  PointsMaterial,
   RingGeometry,
   ShaderMaterial,
   SphereGeometry,
   Vector3,
+  Vector4,
   type Object3D,
 } from 'three';
 import { seeded, haloBuffer } from './effects';
@@ -47,6 +49,8 @@ const DISK_NORMAL = new Vector3(0, 0, 1).applyEuler(TILT);
 const DISK_INNER = 1.35;
 const DISK_OUTER = 3.1;
 const DUST_OUTER = 3.6;
+/** Até onde vai a poeira da periferia (em raios da sombra). */
+const PERIPHERY_OUTER = 7.5;
 
 const DISK_VERTEX = /* glsl */ `
   varying vec2 vPos;
@@ -192,19 +196,23 @@ const DUST_VERTEX = /* glsl */ `
   uniform float uTime;
   uniform float uR0;
   uniform float uScale;
+  uniform float uOuter;
+  uniform float uPeriod;
+  uniform float uAlpha;
+  uniform float uFlat;
   varying float vAlpha;
   varying float vHeat;
   void main() {
     // Cada grão cumpre um ciclo: nasce longe, espirala para dentro e some perto da sombra.
-    float period = 48.0 + 46.0 * aSeed.z;
+    float period = (48.0 + 46.0 * aSeed.z) * uPeriod;
     float cyc = fract(uTime / period + aSeed.x);
-    float r = mix(uR0 * ${DUST_OUTER.toFixed(2)}, uR0 * 1.12, pow(cyc, 1.35));
+    float r = mix(uR0 * uOuter, uR0 * 1.12, pow(cyc, 1.35));
     float turns = 0.5 + 2.8 * (cyc + 1.8 * cyc * cyc * cyc);
     float ang = aSeed.y * 6.2831853 + turns * 6.2831853;
-    float h = aSeed.w * uR0 * (0.04 + 0.42 * (r / (uR0 * ${DUST_OUTER.toFixed(2)}))) * (1.0 - 0.5 * cyc);
+    float h = aSeed.w * uR0 * (0.04 + 0.42 * uFlat * (r / (uR0 * uOuter))) * (1.0 - 0.5 * cyc);
     vec3 p = vec3(cos(ang) * r, sin(ang) * r, h);
     vHeat = pow(cyc, 1.6);
-    vAlpha = smoothstep(0.0, 0.1, cyc) * (1.0 - smoothstep(0.86, 1.0, cyc)) * (0.28 + 0.72 * vHeat);
+    vAlpha = smoothstep(0.0, 0.1, cyc) * (1.0 - smoothstep(0.86, 1.0, cyc)) * (0.28 + 0.72 * vHeat) * uAlpha;
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_PointSize = aSize * uScale / -mv.z * (0.75 + 0.8 * vHeat);
     gl_Position = projectionMatrix * mv;
@@ -232,8 +240,10 @@ function tint(workspaceHex: string): Color {
 
 /** Quanto do Eclipse o modo escolhido desenha. */
 export interface EclipseQuality {
-  /** Grãos de poeira em órbita. */
+  /** Grãos de poeira em órbita, perto do disco. */
   dust: number;
+  /** Grãos da poeira da periferia (mais espalhados, mais fracos e mais lentos). */
+  periphery: number;
   /** Camadas de ruído do disco (2 ou 3). */
   octaves: number;
   /** Segmentos do anel do disco. */
@@ -304,8 +314,23 @@ export function createEclipse(options: {
   arc.frustumCulled = false;
 
   // Poeira em órbita: tudo na placa de vídeo, sorteios fixos (a mesma poeira a cada abertura).
-  const dust = createDust(r0, quality.dust, time, scale, colors);
+  const dust = createDust(r0, quality.dust, time, scale, colors, {
+    outer: DUST_OUTER,
+    period: 1,
+    alpha: 1,
+    flat: 1,
+    seed: 1703,
+  });
   dust.rotation.copy(TILT);
+  // Poeira da periferia (GE5): um véu mais largo e quase em volta toda, que cai bem devagar e dá volume ao redor do disco.
+  const periphery = createDust(r0, quality.periphery, time, scale, colors, {
+    outer: PERIPHERY_OUTER,
+    period: 2.4,
+    alpha: 0.55,
+    flat: 3.2,
+    seed: 2411,
+  });
+  periphery.rotation.copy(TILT);
 
   // Brilho em volta: pontos macios no centro (a sombra, opaca, cobre o miolo).
   const glow = haloBuffer(quality.glowLayers, halo);
@@ -315,7 +340,7 @@ export function createEclipse(options: {
   for (let i = 0; i < quality.glowLayers; i++) glow.set(i, { x: 0, y: 0, z: 0 }, glowColor, sizes[i]!, alphas[i]!);
   glow.points.frustumCulled = false;
 
-  return [shadow, disk, dust, arc, glow.points];
+  return [shadow, disk, dust, periphery, arc, glow.points];
 }
 
 function createDust(
@@ -324,8 +349,9 @@ function createDust(
   time: { value: number },
   scale: { value: number },
   colors: { uHot: { value: Color }; uWarm: { value: Color } },
+  shape: { outer: number; period: number; alpha: number; flat: number; seed: number },
 ): Points {
-  const rand = seeded(1703);
+  const rand = seeded(shape.seed);
   const seeds = new Float32Array(count * 4);
   const sizes = new Float32Array(count);
   const positions = new Float32Array(count * 3);
@@ -344,7 +370,17 @@ function createDust(
     new ShaderMaterial({
       vertexShader: DUST_VERTEX,
       fragmentShader: DUST_FRAGMENT,
-      uniforms: { uTime: time, uR0: { value: r0 }, uScale: scale, uHot: colors.uHot, uWarm: colors.uWarm },
+      uniforms: {
+        uTime: time,
+        uR0: { value: r0 },
+        uScale: scale,
+        uOuter: { value: shape.outer },
+        uPeriod: { value: shape.period },
+        uAlpha: { value: shape.alpha },
+        uFlat: { value: shape.flat },
+        uHot: colors.uHot,
+        uWarm: colors.uWarm,
+      },
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
@@ -352,4 +388,46 @@ function createDust(
   );
   points.frustumCulled = false;
   return points;
+}
+
+/** Raio da sombra do Eclipse, a partir do raio do sol (o Eclipse cabe dentro dele). */
+export const eclipseShadowRadius = (sunRadius: number) => sunRadius * 0.34;
+
+/**
+ * Lente nas estrelas do fundo (GE5). Em vez de curvar a luz de verdade, cada estrela é deslocada na tela como numa lente
+ * fina: a imagem principal fica `(β + √(β² + 4θ²))/2` do centro do buraco negro, onde β é a distância original na tela e
+ * θ o raio do anel de Einstein (um pouco maior que a sombra). As estrelas de dentro são empurradas para fora e se
+ * amontoam num anel em volta da sombra; as distantes quase não mexem. Só as estrelas decorativas são afetadas:
+ * planetas, notas e a seleção nunca saem do lugar.
+ */
+export interface StarLens {
+  /** Centro da sombra na tela (x, y em NDC), raio dela (em NDC vertical) e proporção da tela. */
+  uLens: { value: Vector4 };
+  /** 1 = ligada (estilo Eclipse). */
+  uLensOn: { value: number };
+}
+
+const LENS_VERTEX = /* glsl */ `
+  if (uLensOn > 0.5 && uLens.z > 0.0 && gl_Position.w > 0.0) {
+    vec2 ndc = gl_Position.xy / gl_Position.w;
+    vec2 d = (ndc - uLens.xy) * vec2(uLens.w, 1.0);
+    float rho = length(d);
+    float te = uLens.z * 1.35;
+    float image = 0.5 * (rho + sqrt(rho * rho + 4.0 * te * te));
+    vec2 dir = rho > 1e-5 ? d / rho : vec2(0.0, 1.0);
+    ndc = uLens.xy + dir * image / vec2(uLens.w, 1.0);
+    gl_Position.xy = ndc * gl_Position.w;
+  }
+`;
+
+/** Acrescenta a lente ao material de pontos das estrelas (o desenho em si continua o do Three.js). */
+export function patchStarLens(material: PointsMaterial, lens: StarLens): void {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uLens = lens.uLens;
+    shader.uniforms.uLensOn = lens.uLensOn;
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'uniform vec4 uLens;\nuniform float uLensOn;\nvoid main() {')
+      .replace('#include <project_vertex>', `#include <project_vertex>\n${LENS_VERTEX}`);
+  };
+  material.customProgramCacheKey = () => 'nexus-star-lens';
 }

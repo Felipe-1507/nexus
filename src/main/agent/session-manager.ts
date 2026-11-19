@@ -171,7 +171,17 @@ export class SessionManager {
   async interrupt(conversationId: string): Promise<void> {
     const session = this.sessions.get(conversationId);
     if (!session?.turn) return;
-    session.turn.acc.markInterrupted();
+    const turn = session.turn;
+    turn.acc.markInterrupted();
+    // O pedido de parada só vale quando o Claude Code o atende. Com a API sem responder (uma chamada enorme, a rede),
+    // ele pode demorar minutos: passado o prazo, o processo é encerrado à força. A conversa continua de onde estava
+    // (a próxima mensagem reabre a sessão), e o turno é registrado como interrompido.
+    const force = setTimeout(() => {
+      if (this.sessions.get(conversationId) === session && session.turn === turn && !turn.finished) {
+        this.dispose(conversationId, 'Resposta interrompida.');
+      }
+    }, INTERRUPT_GRACE_MS);
+    force.unref();
     try {
       await session.query.interrupt();
     } catch {
@@ -351,6 +361,9 @@ export class SessionManager {
     session.query.close();
   }
 }
+
+/** Quanto o Nexus espera o Claude Code atender o pedido de parar antes de encerrar o processo. */
+export const INTERRUPT_GRACE_MS = 15_000;
 
 function configKey(c: SessionConfig): string {
   return JSON.stringify([

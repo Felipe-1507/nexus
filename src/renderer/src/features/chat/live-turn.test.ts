@@ -36,3 +36,21 @@ describe('resposta em andamento', () => {
     expect(formatElapsed(125)).toBe('2 min 05 s');
   });
 });
+
+describe('nova tentativa do Claude Code na resposta em andamento', () => {
+  const retry = { attempt: 1, maxRetries: 10, delayMs: 2000, status: 529, error: 'overloaded', noResponseMs: null };
+
+  it('guarda o aviso e o tira assim que chega qualquer sinal de resposta', () => {
+    useChat.getState().begin('c1', 'm1');
+    vi.setSystemTime(1_030_000);
+    useChat.getState().apply({ type: 'retry', conversationId: 'c1', assistantMessageId: 'm1', retry });
+    expect(useChat.getState().live.c1?.retry).toMatchObject({ attempt: 1, at: 1_030_000 });
+    // O aviso conta como sinal: o relógio do "último sinal" reinicia.
+    expect(useChat.getState().live.c1?.lastEventAt).toBe(1_030_000);
+
+    vi.setSystemTime(1_040_000);
+    useChat.getState().apply({ type: 'text', conversationId: 'c1', assistantMessageId: 'm1', text: 'oi' });
+    expect(useChat.getState().live.c1?.retry).toBeUndefined();
+    expect(useChat.getState().live.c1?.draft).toBe('oi');
+  });
+});

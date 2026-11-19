@@ -116,11 +116,26 @@ export const enqueueMessageSchema = z
     path: ['text'],
   });
 
+/**
+ * O Claude Code não conseguiu uma resposta da API e vai tentar de novo (aviso `api_retry` do SDK). `error` é o motivo
+ * como o SDK informa (`rate_limit`, `overloaded`, `server_error`…); `noResponseMs` só vem quando a API nem começou a
+ * responder dentro do prazo (a tentativa ficou esperando esse tempo).
+ */
+export interface ApiRetry {
+  attempt: number;
+  maxRetries: number;
+  delayMs: number;
+  status: number | null;
+  error: string;
+  noResponseMs: number | null;
+}
+
 /** Eventos de uma resposta em andamento, enviados do main para a tela pelo canal `chat:event`. */
 export type ChatEvent =
   | { type: 'text'; conversationId: string; assistantMessageId: string; text: string }
   | { type: 'reset-draft'; conversationId: string; assistantMessageId: string }
   | { type: 'activity'; conversationId: string; assistantMessageId: string; activity: Activity }
+  | { type: 'retry'; conversationId: string; assistantMessageId: string; retry: ApiRetry }
   | { type: 'turn-end'; conversationId: string; message: ChatMessage }
   /** Uma mensagem da fila começou a ser respondida: a tela mostra a mensagem do usuário e a nova resposta. */
   | { type: 'turn-start'; conversationId: string; userMessage: ChatMessage; assistantMessageId: string }

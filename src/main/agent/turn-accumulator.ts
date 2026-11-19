@@ -1,11 +1,14 @@
 import path from 'node:path';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { Activity, MessageStatus } from '@shared/chat';
+import type { Activity, ApiRetry, MessageStatus } from '@shared/chat';
 import type { FileChange } from '@shared/code';
 import { FileChangeTracker } from './file-changes';
 
 export type TurnEvent =
-  { type: 'text'; text: string } | { type: 'reset-draft' } | { type: 'activity'; activity: Activity };
+  | { type: 'text'; text: string }
+  | { type: 'reset-draft' }
+  | { type: 'activity'; activity: Activity }
+  | { type: 'retry'; retry: ApiRetry };
 
 /** Uso de uma chamada à API (um passo do turno). O contexto dela é `input + cacheRead + cacheCreation`. */
 export interface CallUsage {
@@ -127,6 +130,21 @@ export class TurnAccumulator {
         postTokens: m.post_tokens ?? null,
         durationMs: m.duration_ms ?? null,
       };
+      return;
+    }
+    // A API não respondeu (ou falhou) e o Claude Code vai tentar de novo: sem isto, a tela só mostraria "Pensando".
+    if (msg.type === 'system' && msg.subtype === 'api_retry') {
+      this.emit({
+        type: 'retry',
+        retry: {
+          attempt: msg.attempt,
+          maxRetries: msg.max_retries,
+          delayMs: msg.retry_delay_ms,
+          status: msg.error_status,
+          error: msg.error,
+          noResponseMs: msg.no_response?.waited_ms ?? null,
+        },
+      });
       return;
     }
     // Frames de subagentes não fazem parte da resposta principal.

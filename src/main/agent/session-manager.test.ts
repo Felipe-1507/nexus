@@ -2,6 +2,7 @@ import type { Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-a
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TurnOutcome } from './turn-accumulator';
 import {
+  INTERRUPT_GRACE_MS,
   READ_ONLY_DISALLOWED_TOOLS,
   SessionManager,
   type AgentQuery,
@@ -190,6 +191,29 @@ describe('SessionManager', () => {
     ]);
     expect(manager.isRunning('c1')).toBe(false);
     manager.closeAll();
+  });
+
+  it('parar com a API sem responder: passado o prazo, o processo é encerrado e o turno fica interrompido', async () => {
+    vi.useFakeTimers();
+    try {
+      // O Claude Code aceita o pedido de parar mas nunca encerra o turno (a chamada à API está pendurada).
+      const hang: Script = async function* () {
+        yield init('11111111-1111-4111-8111-111111111111');
+        await new Promise(() => {});
+      };
+      const manager = new SessionManager({ createQuery: fakeClaude(hang).createQuery, env: {} });
+      const t = turn(manager, 'c1', 'oi');
+      await vi.advanceTimersByTimeAsync(10);
+      expect(manager.isRunning('c1')).toBe(true);
+      void manager.interrupt('c1');
+      await vi.advanceTimersByTimeAsync(INTERRUPT_GRACE_MS - 1000);
+      expect(manager.isRunning('c1')).toBe(true);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(manager.isRunning('c1')).toBe(false);
+      expect(await t.done).toMatchObject({ status: 'interrupted' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('depois de fechar tudo (app encerrando), nenhuma resposta nova começa', async () => {

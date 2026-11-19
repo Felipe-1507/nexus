@@ -670,6 +670,8 @@ test('estilo Eclipse: troca nas Configurações vale na hora, não mexe em posi�
     await expect(canvas).toHaveAttribute('data-planets', '3');
     // O estilo de sempre é o padrão.
     await expect(canvas).toHaveAttribute('data-look', 'atual');
+    // A lente nas estrelas e o tamanho mínimo dos planetas só existem no Eclipse.
+    await expect(canvas).toHaveAttribute('data-lens', 'off');
     const systems = await canvas.getAttribute('data-systems');
     const search = panel.getByRole('combobox', { name: 'Buscar nota na galáxia' });
     await search.fill('roteiro');
@@ -684,6 +686,7 @@ test('estilo Eclipse: troca nas Configurações vale na hora, não mexe em posi�
     await looks.getByRole('radio', { name: /Eclipse/ }).click();
     await expect(looks.getByRole('radio', { name: /Eclipse/ })).toHaveAttribute('aria-checked', 'true');
     await expect(canvas).toHaveAttribute('data-look', 'eclipse');
+    await expect(canvas).toHaveAttribute('data-lens', 'on');
     // Só o centro mudou: planetas, sistemas e seleção ficam como estavam.
     await expect(canvas).toHaveAttribute('data-planets', '3');
     await expect(canvas).toHaveAttribute('data-systems', systems!);
@@ -704,8 +707,99 @@ test('estilo Eclipse: troca nas Configurações vale na hora, não mexe em posi�
     await settings().click();
     await looks.getByRole('radio', { name: /Atual/ }).click();
     await expect(canvas).toHaveAttribute('data-look', 'atual');
+    await expect(canvas).toHaveAttribute('data-lens', 'off');
     await expect(canvas).toHaveAttribute('data-planets', '3');
     await expect(canvas).toHaveAttribute('data-systems', systems!);
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
+test('cartão do planeta: prévia do texto, ligações de saída e de entrada, e clicar numa ligação leva a câmera até ela', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Cartão');
+    const vault = ws.knowledgeDir;
+    write(
+      vault,
+      'Trabalho/Conciliação.md',
+      '---\ntags: [a]\n---\n# Conciliação\n\nCompara o **extrato** com o razão. Ver [[Bancos]] e [[Nota fantasma]].\n\n```js\nconst codigo = 1;\n```\n',
+    );
+    write(vault, 'Trabalho/Bancos.md', '# Bancos\nUsado na [[Conciliação]].\n');
+    write(vault, 'Ideias.md', '# Ideias\nPensar em [[Conciliação]].\n');
+
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    const search = page.getByRole('combobox', { name: 'Buscar nota na galáxia' });
+    await search.fill('conciliacao');
+    await search.press('Enter');
+    await expect(canvas).toHaveAttribute('data-selected', 'Trabalho/Conciliação.md');
+
+    const card = page.getByRole('region', { name: 'Planeta selecionado' });
+    // Prévia: sem frontmatter, título repetido, negrito, links nem o bloco de código.
+    await expect(card.getByTestId('planet-preview')).toHaveText(
+      'Compara o extrato com o razão. Ver Bancos e Nota fantasma.',
+    );
+    // Para onde a nota liga (a que não existe aparece apagada) e quem a cita.
+    const out = card.getByTestId('planet-outgoing');
+    await expect(out).toContainText('Liga a (2)');
+    await expect(out.getByRole('button', { name: 'Bancos' })).toBeVisible();
+    await expect(out.getByText('Nota fantasma')).toBeVisible();
+    await expect(out.getByRole('button', { name: 'Nota fantasma' })).toHaveCount(0);
+    const back = card.getByTestId('planet-backlinks');
+    await expect(back).toContainText('Citada por (2)');
+
+    // Clicar numa ligação seleciona o planeta dela e a câmera vai até lá.
+    await out.getByRole('button', { name: 'Bancos' }).click();
+    await expect(canvas).toHaveAttribute('data-selected', 'Trabalho/Bancos.md');
+    await expect(card).toContainText('Bancos');
+    await expect(card.getByTestId('planet-backlinks')).toContainText('Conciliação');
+    await card.getByTestId('planet-backlinks').getByRole('button', { name: 'Conciliação' }).click();
+    await expect(canvas).toHaveAttribute('data-selected', 'Trabalho/Conciliação.md');
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
+test('Eclipse de longe: o planeta vira um ponto de luz e continua clicável; as camadas extras do estilo só existem nele', async () => {
+  const { app, page, userData } = await launchApp();
+  try {
+    const ws = await createWorkspace(page, 'Longe');
+    write(ws.knowledgeDir, 'Ideias/Roteiro.md', '# Roteiro\nVer [[Agenda]].\n');
+    write(ws.knowledgeDir, 'Ideias/Agenda.md', '# Agenda\n');
+    write(ws.knowledgeDir, 'Pessoal/Leituras.md', '# Leituras\n');
+    await page.evaluate(() => window.nexus.invoke('galaxy:setLook', 'eclipse'));
+    await page.reload();
+    await page.getByTestId('chat-view').waitFor();
+    await openGalaxy(page);
+    const canvas = page.getByTestId('galaxy-canvas');
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    await expect(canvas).toHaveAttribute('data-lens', 'on');
+
+    // Foca um planeta e se afasta bastante com a roda: ele fica no centro da tela, minúsculo.
+    const search = page.getByRole('combobox', { name: 'Buscar nota na galáxia' });
+    await search.fill('roteiro');
+    await search.press('Enter');
+    await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
+    await expect(canvas).toHaveAttribute('data-flying', 'false');
+    const box = (await canvas.boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    for (let i = 0; i < 10; i++) {
+      await page.mouse.wheel(0, 500);
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(1200);
+
+    // Clicar no vazio solta a seleção; clicar onde está o ponto de luz seleciona de novo (a área de clique acompanha o que se vê).
+    await page.mouse.click(box.x + box.width - 80, box.y + box.height - 120);
+    await expect(canvas).toHaveAttribute('data-selected', '');
+    await page.mouse.click(cx, cy);
+    await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
   } finally {
     await app.close();
     removeUserData(userData);
