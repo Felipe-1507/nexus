@@ -55,6 +55,8 @@ export async function launchApp(userData = tempUserData(), options: LaunchOption
   env.NEXUS_NO_EXTERNAL = '1';
   // A abertura animada atrasaria cada teste em 2 s e seria a primeira janela: só o teste dela a liga.
   env.NEXUS_NO_SPLASH = '1';
+  // A tela de boas-vindas ficaria por cima de todo teste na primeira abertura do dia: só o teste dela a liga.
+  env.NEXUS_NO_WELCOME = '1';
   const app = await electron.launch({
     args: ['.'],
     env: { ...env, ...options.env, NEXUS_USER_DATA_DIR: userData },

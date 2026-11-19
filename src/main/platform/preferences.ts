@@ -17,6 +17,14 @@ export const preferencesSchema = z.object({
   galaxyQuality: z.enum(['leve', 'original']).default('leve'),
   /** Estilo da galáxia: o visual de sempre ou o núcleo "Eclipse" (buraco negro). Independe do modo (Leve/Original). */
   galaxyLook: z.enum(['atual', 'eclipse']).default('atual'),
+  /** Tela de boas-vindas na primeira abertura do dia (Configurações → Boas-vindas). */
+  welcomeEnabled: z.boolean().default(true),
+  /** Deixa o Claude (modelo pequeno) escrever o resumo da tela de boas-vindas. */
+  welcomeAi: z.boolean().default(true),
+  /** Nome na saudação (`null` = primeiro nome do `git config user.name`). */
+  welcomeName: z.string().trim().max(40).nullable().default(null),
+  /** Quando a tela de boas-vindas foi vista pela última vez (início do próximo resumo). */
+  welcomeLastAt: z.string().nullable().default(null),
   /** Cor de destaque escolhida (`null` = a da marca). */
   accent: z
     .string()
