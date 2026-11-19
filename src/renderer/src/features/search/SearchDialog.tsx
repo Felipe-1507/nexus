@@ -1,20 +1,16 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { SEARCH_MIN_LENGTH, type SearchHit } from '@shared/search';
+import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import type { SearchHit } from '@shared/search';
 import type { Workspace } from '@shared/workspace';
-import { useLayout } from '@renderer/app/shell/layout-store';
 import { Dialog } from '@renderer/components/ui/Dialog';
 import { useChat } from '@renderer/features/chat/chat-store';
 import { useProjects } from '@renderer/features/projects/queries';
 import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
-import { invoke } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { formatFullTime, formatMessageTime } from '@renderer/lib/format-time';
+import { Highlighted } from './Highlighted';
+import { openSearchHit, useConversationSearch } from './queries';
 import { useSearch } from './search-store';
-
-const DEBOUNCE_MS = 250;
-const NO_HITS: SearchHit[] = [];
 
 /** Busca nas conversas: janela aberta pelo botão da barra de título ou por Ctrl+Shift+F. */
 export function SearchHost() {
@@ -34,15 +30,6 @@ export function SearchHost() {
   );
 }
 
-function useDebounced<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
-}
-
 function SearchPanel({ workspace, onClose }: { workspace: Workspace; onClose: () => void }) {
   const scopeProjectId = useChat((s) => s.scope[workspace.id] ?? null);
   const projects = useProjects(workspace.id).data;
@@ -51,29 +38,13 @@ function SearchPanel({ workspace, onClose }: { workspace: Workspace; onClose: ()
   // Dentro de um projeto, a busca começa nele; "Todo o Workspace" amplia.
   const [where, setWhere] = useState<'project' | 'all'>(project ? 'project' : 'all');
   const [text, setText] = useState('');
-  const query = useDebounced(text.trim(), DEBOUNCE_MS);
   const projectId = where === 'project' && project ? project.id : undefined;
-  const ready = query.length >= SEARCH_MIN_LENGTH;
   const root = useRef<HTMLDivElement>(null);
-
-  const result = useQuery({
-    queryKey: ['search', workspace.id, projectId ?? 'todos', query],
-    queryFn: () => invoke('conversations:search', { workspaceId: workspace.id, query, projectId }),
-    enabled: ready,
-    placeholderData: keepPreviousData,
-    // Conversas mudam o tempo todo: sem reaproveitar resultados antigos.
-    gcTime: 0,
-    staleTime: 0,
-  });
-  const hits = ready && result.data ? result.data.hits : NO_HITS;
+  const { ready, pending, error, hits, truncated } = useConversationSearch(workspace.id, text, projectId);
   const groups = useMemo(() => groupByConversation(hits), [hits]);
 
   function openHit(hit: SearchHit) {
-    const chat = useChat.getState();
-    chat.setScope(workspace.id, hit.projectId);
-    chat.select(workspace.id, hit.conversationId);
-    useLayout.getState().setView('chat');
-    useSearch.getState().goTo(hit.conversationId, hit.messageId);
+    openSearchHit(workspace.id, hit);
     onClose();
   }
 
@@ -125,17 +96,17 @@ function SearchPanel({ workspace, onClose }: { workspace: Workspace; onClose: ()
         <span className="ml-auto text-muted" aria-live="polite" data-testid="search-status">
           {!ready
             ? 'Digite ao menos 2 letras'
-            : result.isPending || result.isPlaceholderData
+            : pending
               ? 'Procurando…'
               : hits.length === 0
                 ? 'Nada encontrado'
-                : `${hits.length} ${hits.length === 1 ? 'trecho' : 'trechos'}${result.data?.truncated ? ' (há mais; refine a busca)' : ''}`}
+                : `${hits.length} ${hits.length === 1 ? 'trecho' : 'trechos'}${truncated ? ' (há mais; refine a busca)' : ''}`}
         </span>
       </div>
 
-      {result.isError && (
+      {error && (
         <p role="alert" className="mt-3 text-sm text-danger">
-          {result.error.message}
+          {error.message}
         </p>
       )}
 
@@ -210,23 +181,6 @@ function ScopeChip({ active, onClick, children }: { active: boolean; onClick: ()
       {children}
     </button>
   );
-}
-
-/** O trecho com as palavras achadas em destaque. */
-function Highlighted({ text, ranges }: { text: string; ranges: Array<[number, number]> }) {
-  const parts: ReactNode[] = [];
-  let at = 0;
-  ranges.forEach(([s, e], i) => {
-    if (s > at) parts.push(<Fragment key={`t${i}`}>{text.slice(at, s)}</Fragment>);
-    parts.push(
-      <mark key={`m${i}`} className="rounded-sm bg-accent-soft px-0.5 text-text">
-        {text.slice(s, e)}
-      </mark>,
-    );
-    at = e;
-  });
-  if (at < text.length) parts.push(<Fragment key="end">{text.slice(at)}</Fragment>);
-  return <>{parts}</>;
 }
 
 interface Group {

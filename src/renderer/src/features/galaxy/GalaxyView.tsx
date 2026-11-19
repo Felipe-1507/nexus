@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PALETTE } from '@shared/brand';
 import { CHAT_EVENT_CHANNEL, type ChatEvent } from '@shared/chat';
 import { KNOWLEDGE_EVENT_CHANNEL, type GalaxyGraph, type KnowledgeEvent } from '@shared/knowledge';
@@ -21,7 +21,13 @@ import { resolvePlanetStyle, type PlanetOverride } from '@shared/planets';
 import { Button } from '@renderer/components/ui/Button';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { useLayout } from '@renderer/app/shell/layout-store';
-import { useGalaxyGraph, useGalaxyStyles, useSetPlanetStyle } from '@renderer/features/knowledge/queries';
+import {
+  useGalaxyGraph,
+  useGalaxyStyles,
+  useNote,
+  useNoteLinks,
+  useSetPlanetStyle,
+} from '@renderer/features/knowledge/queries';
 import { workspaceColors } from '@renderer/features/workspaces/appearance';
 import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { cn } from '@renderer/lib/cn';
@@ -33,7 +39,11 @@ import { useGalaxyLook, useGalaxyQuality } from '@renderer/features/settings/que
 import { PlanetEditor } from './PlanetEditor';
 import { MOON_COLORS, MOON_LABELS, moonKind, moonName } from './moon-effects';
 import { describeStop, type TourStop } from './explore';
+import { Highlighted } from '@renderer/features/search/Highlighted';
+import { openSearchHit, useConversationSearch } from '@renderer/features/search/queries';
+import type { SearchHit } from '@shared/search';
 import { HomePanel } from './HomePanel';
+import { notePreview } from './note-preview';
 import { computeHomeStats } from './home-stats';
 import { useChat } from '@renderer/features/chat/chat-store';
 import type { Conversation } from '@shared/chat';
@@ -232,6 +242,12 @@ function Galaxy({
   });
   const systemColors = useMemo(() => new Map(layout?.systems.map((s) => [s.name, s.color]) ?? []), [layout]);
 
+  /** Leva a câmera até a nota de um caminho (para as ligações do cartão). */
+  function focusPath(path: string) {
+    const i = data?.notes.findIndex((n) => n.path === path) ?? -1;
+    if (i >= 0) scene.current?.focus(i);
+  }
+
   function openConversation(c: Conversation) {
     const chat = useChat.getState();
     chat.setScope(workspaceId, c.projectId);
@@ -340,6 +356,7 @@ function Galaxy({
           </div>
           <SearchBox
             graph={data}
+            workspaceId={workspaceId}
             onPick={(i) => scene.current?.focus(i)}
             onSearch={(m) => scene.current?.setSearch(m)}
             onFrame={(m) => scene.current?.frameNotes(m)}
@@ -380,8 +397,12 @@ function Galaxy({
         <section
           aria-label="Planeta selecionado"
           className={cn(
-            'absolute rounded-2xl border border-white/10 bg-black/60 p-4 backdrop-blur',
-            panel ? 'right-3 bottom-3 left-3' : home ? 'right-4 bottom-4 w-72' : 'bottom-4 left-4 w-72',
+            'absolute overflow-y-auto rounded-2xl border border-white/10 bg-black/60 p-4 backdrop-blur',
+            panel
+              ? 'right-3 bottom-3 left-3 max-h-[55%]'
+              : home
+                ? 'right-4 bottom-4 max-h-[calc(100%-6rem)] w-80'
+                : 'bottom-4 left-4 max-h-[calc(100%-6rem)] w-80',
           )}
         >
           <p className="text-sm font-semibold break-words">{note.title}</p>
@@ -437,6 +458,7 @@ function Galaxy({
               {styles[selected]!.detail}
             </p>
           )}
+          <PlanetRelations key={note.path} workspaceId={workspaceId} path={note.path} onFocusPath={focusPath} />
           <div className="mt-3 flex gap-2">
             <Button variant="primary" className="min-w-0 flex-1" onClick={() => openNote(workspaceId, note.path)}>
               <FileText size={14} /> Abrir nota
@@ -467,6 +489,106 @@ function Galaxy({
         </section>
       )}
     </div>
+  );
+}
+
+/** Quantas ligações cada lista do cartão mostra (o resto vira "+N"). */
+const RELATION_ROWS = 6;
+
+/**
+ * Prévia e ligações da nota selecionada (GE3): o começo do texto, para onde ela liga e quem a cita. Lê só esta nota,
+ * quando ela é escolhida; clicar numa ligação leva a câmera até o planeta dela.
+ */
+function PlanetRelations({
+  workspaceId,
+  path,
+  onFocusPath,
+}: {
+  workspaceId: string;
+  path: string;
+  onFocusPath: (path: string) => void;
+}) {
+  const note = useNote(workspaceId, path);
+  const links = useNoteLinks(workspaceId, path);
+  const preview = useMemo(() => (note.data ? notePreview(note.data.content) : ''), [note.data]);
+  // Mesmo destino citado várias vezes aparece uma vez só.
+  const outgoing = useMemo(() => {
+    const seen = new Set<string>();
+    return (links.data?.outgoing ?? []).filter((l) => {
+      const key = l.path ?? `?${l.target.toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [links.data]);
+  const backlinks = links.data?.backlinks ?? [];
+
+  return (
+    <div data-testid="planet-relations">
+      {preview && (
+        <p className="mt-2 line-clamp-5 text-xs leading-5 break-words text-white/65" data-testid="planet-preview">
+          {preview}
+        </p>
+      )}
+      {outgoing.length > 0 && (
+        <RelationList label="Liga a" count={outgoing.length} testId="planet-outgoing">
+          {outgoing.slice(0, RELATION_ROWS).map((l) => (
+            <li key={l.path ?? `?${l.target}`}>
+              {l.path ? (
+                <RelationButton onClick={() => onFocusPath(l.path!)}>{l.target}</RelationButton>
+              ) : (
+                <span className="block truncate px-1 text-xs text-white/40" title="Esta nota ainda não existe">
+                  {l.target}
+                </span>
+              )}
+            </li>
+          ))}
+        </RelationList>
+      )}
+      {backlinks.length > 0 && (
+        <RelationList label="Citada por" count={backlinks.length} testId="planet-backlinks">
+          {backlinks.slice(0, RELATION_ROWS).map((b) => (
+            <li key={b.path}>
+              <RelationButton onClick={() => onFocusPath(b.path)}>{b.title}</RelationButton>
+            </li>
+          ))}
+        </RelationList>
+      )}
+    </div>
+  );
+}
+
+function RelationList({
+  label,
+  count,
+  testId,
+  children,
+}: {
+  label: string;
+  count: number;
+  testId: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mt-2" data-testid={testId}>
+      <p className="text-[11px] tracking-wide text-white/45 uppercase">
+        {label} ({count})
+      </p>
+      <ul className="mt-0.5 space-y-0.5">{children}</ul>
+      {count > RELATION_ROWS && <p className="px-1 pt-0.5 text-[11px] text-white/40">+ {count - RELATION_ROWS}</p>}
+    </div>
+  );
+}
+
+function RelationButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full truncate rounded-md px-1 py-0.5 text-left text-xs text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white/60"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -533,17 +655,21 @@ function Notice({ title, description }: { title: string; description: string }) 
 }
 
 /**
- * Busca da galáxia (G8): enquanto digita, as notas encontradas acendem na galáxia e o resto apaga. Aceita `#tag`. A
- * lista mostra as primeiras; "Enquadrar" leva a câmera a mostrar todas.
+ * Busca única da galáxia (G8 + GE2): enquanto digita, as notas encontradas acendem na galáxia e o resto apaga; a lista
+ * mostra as primeiras notas (por título e caminho; aceita `#tag`) e, logo abaixo, os trechos de conversas que citam o
+ * texto (o que você escreveu e o que o Claude respondeu). Só dados locais: nada vai ao Claude. "Enquadrar" leva a
+ * câmera a mostrar todas as notas.
  */
 function SearchBox({
   graph,
+  workspaceId,
   onPick,
   onSearch,
   onFrame,
   panel,
 }: {
   graph: GalaxyGraph;
+  workspaceId: string;
   onPick: (index: number) => void;
   onSearch: (matches: number[] | null) => void;
   onFrame: (matches: number[]) => void;
@@ -554,6 +680,10 @@ function SearchBox({
   const results = useMemo(() => searchNotes(graph, query), [graph, query]);
   const matches = useMemo(() => matchNotes(graph, query), [graph, query]);
   const open = query.trim().length > 0;
+  // `#tag` é coisa de nota: com ela, as conversas não entram na busca.
+  const chats = useConversationSearch(workspaceId, query.trim().startsWith('#') ? '' : query);
+  const chatHits = useMemo(() => chats.hits.slice(0, CHAT_ROWS), [chats.hits]);
+  const total = results.length + chatHits.length;
   const searchRef = useRef(onSearch);
   searchRef.current = onSearch;
   useEffect(() => {
@@ -566,6 +696,23 @@ function SearchBox({
     setQuery('');
   }
 
+  function pickChat(hit: SearchHit) {
+    openSearchHit(workspaceId, hit);
+    setQuery('');
+  }
+
+  /** Abre o resultado marcado (nota ou trecho de conversa). Devolve se havia algum. */
+  function pickActive(): boolean {
+    if (active < results.length) {
+      pick(results[active]!);
+      return true;
+    }
+    const hit = chatHits[active - results.length];
+    if (!hit) return false;
+    pickChat(hit);
+    return true;
+  }
+
   return (
     <div className={cn('absolute', panel ? 'top-3 right-3 left-3' : 'top-4 left-4 w-72')}>
       <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-3 py-2 backdrop-blur focus-within:border-white/30">
@@ -576,17 +723,18 @@ function SearchBox({
           aria-label="Buscar nota na galáxia"
           aria-expanded={open}
           aria-controls="galaxy-results"
-          placeholder="Buscar nota ou #tag…"
+          placeholder="Buscar notas e conversas…"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(0);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') setActive((a) => Math.min(a + 1, results.length - 1));
+            if (e.key === 'ArrowDown') setActive((a) => Math.min(a + 1, total - 1));
             else if (e.key === 'ArrowUp') setActive((a) => Math.max(a - 1, 0));
-            else if (e.key === 'Enter' && results[active] !== undefined) pick(results[active]);
-            else if (e.key === 'Escape') setQuery('');
+            else if (e.key === 'Enter') {
+              if (!pickActive()) return;
+            } else if (e.key === 'Escape') setQuery('');
             else return;
             e.preventDefault();
           }}
@@ -597,15 +745,19 @@ function SearchBox({
         <ul
           id="galaxy-results"
           role="listbox"
-          aria-label="Notas encontradas"
-          className="mt-1 overflow-hidden rounded-xl border border-white/10 bg-black/75 py-1 backdrop-blur"
+          aria-label="Resultados da busca"
+          className="mt-1 max-h-[22rem] overflow-y-auto rounded-xl border border-white/10 bg-black/75 py-1 backdrop-blur"
         >
-          {results.length === 0 && <li className="px-3 py-2 text-xs text-white/50">Nenhuma nota encontrada.</li>}
+          <li role="presentation" className="px-3 pt-1 pb-0.5 text-[10px] tracking-wide text-white/40 uppercase">
+            Notas
+          </li>
+          {results.length === 0 && <li className="px-3 py-1.5 text-xs text-white/50">Nenhuma nota encontrada.</li>}
           {results.map((i, k) => (
             <li
               key={graph.notes[i]!.path}
               role="option"
               aria-selected={k === active}
+              data-testid="search-note"
               onMouseEnter={() => setActive(k)}
               onMouseDown={(e) => {
                 e.preventDefault();
@@ -617,6 +769,44 @@ function SearchBox({
               <p className="truncate text-[11px] text-white/45">{graph.notes[i]!.path}</p>
             </li>
           ))}
+          {(chatHits.length > 0 || chats.pending) && (
+            <li role="presentation" className="px-3 pt-2 pb-0.5 text-[10px] tracking-wide text-white/40 uppercase">
+              Conversas
+            </li>
+          )}
+          {chatHits.length === 0 && chats.pending && (
+            <li className="px-3 py-1.5 text-xs text-white/45">Procurando nas conversas…</li>
+          )}
+          {chatHits.map((hit, k) => {
+            const index = results.length + k;
+            return (
+              <li
+                key={`${hit.conversationId}:${hit.messageId ?? 'titulo'}`}
+                role="option"
+                aria-selected={index === active}
+                data-testid="search-chat"
+                onMouseEnter={() => setActive(index)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickChat(hit);
+                }}
+                className={cn('cursor-pointer px-3 py-1.5', index === active && 'bg-white/10')}
+              >
+                <p className="truncate text-[11px] text-white/45">
+                  {hit.role === 'user' ? 'Você' : hit.role === 'assistant' ? 'Claude' : 'Título'} ·{' '}
+                  {hit.conversationTitle}
+                </p>
+                <p className="line-clamp-2 text-xs leading-4 text-white/85">
+                  <Highlighted text={hit.text} ranges={hit.ranges} />
+                </p>
+              </li>
+            );
+          })}
+          {chats.error && (
+            <li role="alert" className="px-3 py-1.5 text-xs text-white/60">
+              Não foi possível buscar nas conversas.
+            </li>
+          )}
         </ul>
       )}
       {open && matches.length > 0 && (
@@ -637,6 +827,9 @@ function SearchBox({
     </div>
   );
 }
+
+/** Quantos trechos de conversas a lista da galáxia mostra (a busca completa tem a janela própria, Ctrl+Shift+F). */
+const CHAT_ROWS = 5;
 
 /** Tira as chaves desfeitas (`undefined`) e as anotações vazias, para o que vai ser gravado ser só o que foi trocado. */
 function cleanOverride(override: PlanetOverride): PlanetOverride {

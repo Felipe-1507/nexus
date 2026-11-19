@@ -290,6 +290,7 @@ function bootstrap(): void {
     // Testes reais usam um modelo barato (ex.: haiku). Nunca vale para o app instalado.
     model: app.isPackaged ? undefined : process.env.NEXUS_CLAUDE_MODEL || undefined,
     onError: (message, err) => log.error(message, err),
+    onNotice: (message, detail) => log.warn(message, detail),
   });
 
   const attachmentMaintenance = new AttachmentMaintenance({ workspaces, attachments, chat });

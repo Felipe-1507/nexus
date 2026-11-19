@@ -18,6 +18,8 @@ const PLANET_VERTEX = /* glsl */ `
   attribute float aGlow;  // 0 a 1: nota mexida recentemente
   attribute float aMatch; // busca: 0 = normal, 1 = fora da busca (apagado), 2 = encontrado (aceso)
   uniform float uTime;
+  uniform float uMinPx;   // raio mínimo na tela, em pixels (0 = desligado)
+  uniform float uPxScale; // pixels por unidade de mundo a 1 de distância
   varying vec3 vObj;
   varying vec3 vN;
   varying vec3 vV;
@@ -37,7 +39,14 @@ const PLANET_VERTEX = /* glsl */ `
     float sn = sin(ang);
     vObj = vec3(cs * position.x + sn * position.z, position.y, -sn * position.x + cs * position.z);
     vA = aColorA; vB = aColorB; vP = aParams; vAt = aAtmo; vGlow = aGlow;
-    vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    // De longe, o planeta nunca fica menor que 'uMinPx': vira um ponto de luz compacto em vez de sumir.
+    float boost = 1.0;
+    if (uMinPx > 0.0) {
+      float dist = max(-(modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).z, 0.001);
+      float pxR = length(instanceMatrix[0].xyz) * uPxScale / dist;
+      boost = max(1.0, uMinPx / max(pxR, 1e-4));
+    }
+    vec4 mv = modelViewMatrix * instanceMatrix * vec4(position * boost, 1.0);
     vN = normalize(mat3(modelViewMatrix) * mat3(instanceMatrix) * normal);
     vV = normalize(-mv.xyz);
     // Direção do sol (que fica na origem do mundo) vista deste planeta: viewMatrix[3] é a origem em coordenadas da câmera.
@@ -159,11 +168,21 @@ const PLANET_FRAGMENT = /* glsl */ `
 `;
 
 /** `time` e `rim` são compartilhados com a cena: o relógio ambiente avança um e o perfil de qualidade define o outro. */
-export function createPlanetMaterial(time: { value: number }, rim: { value: number }): ShaderMaterial {
+/** Tamanho mínimo dos planetas na tela (GE5): `uMinPx` em pixels (0 = como sempre) e `uPxScale`, que a cena mantém atualizado. */
+export interface PlanetBoost {
+  uMinPx: { value: number };
+  uPxScale: { value: number };
+}
+
+export function createPlanetMaterial(
+  time: { value: number },
+  rim: { value: number },
+  boost: PlanetBoost = { uMinPx: { value: 0 }, uPxScale: { value: 1 } },
+): ShaderMaterial {
   return new ShaderMaterial({
     vertexShader: PLANET_VERTEX,
     fragmentShader: PLANET_FRAGMENT,
-    uniforms: { uTime: time, uRim: rim },
+    uniforms: { uTime: time, uRim: rim, ...boost },
   });
 }
 

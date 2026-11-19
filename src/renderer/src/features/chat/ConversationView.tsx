@@ -7,6 +7,7 @@ import { Markdown } from '@renderer/components/Markdown';
 import { ConnectClaude } from '@renderer/features/claude/ConnectClaude';
 import { ContextBar } from '@renderer/features/context/ContextBar';
 import { ContinueDialog } from '@renderer/features/context/ContinueDialog';
+import { useContextState } from '@renderer/features/context/queries';
 import { ModelPicker, modelName } from '@renderer/features/models/ModelPicker';
 import { useSetConversationModel } from '@renderer/features/models/queries';
 import { useProjects } from '@renderer/features/projects/queries';
@@ -39,6 +40,7 @@ interface ConversationViewProps {
 /** Conversa aberta (ou uma nova, ainda vazia) do Workspace ativo. */
 export function ConversationView({ workspace, conversationId, claudeReady }: ConversationViewProps) {
   const messages = useMessages(conversationId);
+  const contextTokens = useContextState(conversationId).data?.snapshot?.contextTokens;
   const live = useChat((s) => (conversationId ? s.live[conversationId] : undefined));
   const queue = useChat((s) => (conversationId ? (s.queue[conversationId] ?? EMPTY_QUEUE) : EMPTY_QUEUE));
   const queueError = useChat((s) => (conversationId ? s.queueError[conversationId] : undefined));
@@ -206,7 +208,7 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
               {live && (
                 <div data-testid="message-live">
                   {live.draft ? <Markdown>{live.draft}</Markdown> : <Thinking />}
-                  <Details activities={live.activities} live={live} />
+                  <Details activities={live.activities} live={live} contextTokens={contextTokens} />
                 </div>
               )}
             </div>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Activity, Attachment, ChatEvent, QueuedMessage } from '@shared/chat';
+import type { Activity, ApiRetry, Attachment, ChatEvent, QueuedMessage } from '@shared/chat';
 import type { PermissionRequest } from '@shared/permissions';
 
 /** Resposta sendo gerada agora: o rascunho visível e o que o Claude já fez. */
@@ -10,6 +10,8 @@ export interface LiveTurn {
   /** Quando a resposta começou e quando veio o último sinal do Claude (para mostrar que ele não travou). */
   startedAt: number;
   lastEventAt: number;
+  /** A API não respondeu e o Claude Code está tentando de novo (some assim que chega qualquer sinal de resposta). */
+  retry?: ApiRetry & { at: number };
 }
 
 const freshTurn = (assistantMessageId: string): LiveTurn => {
@@ -17,7 +19,7 @@ const freshTurn = (assistantMessageId: string): LiveTurn => {
   return { assistantMessageId, draft: '', activities: [], startedAt: now, lastEventAt: now };
 };
 
-type TurnEvent = Extract<ChatEvent, { type: 'text' | 'reset-draft' | 'activity' }>;
+type TurnEvent = Extract<ChatEvent, { type: 'text' | 'reset-draft' | 'activity' | 'retry' }>;
 
 interface ChatState {
   /** Conversa aberta em cada Workspace (`null` = conversa nova, ainda não enviada). */
@@ -130,7 +132,10 @@ export const useChat = create<ChatState>()((set) => ({
 function applyTurnEvent(current: LiveTurn | undefined, event: TurnEvent): LiveTurn {
   const turn = current?.assistantMessageId === event.assistantMessageId ? current : freshTurn(event.assistantMessageId);
   const next = { ...turn, lastEventAt: Date.now() };
-  if (event.type === 'text') return { ...next, draft: turn.draft + event.text };
-  if (event.type === 'reset-draft') return { ...next, draft: '' };
-  return { ...next, activities: [...turn.activities, event.activity] };
+  // A nova tentativa não é resposta: guarda o aviso (e o relógio do último sinal continua contando a partir dele).
+  if (event.type === 'retry') return { ...next, retry: { ...event.retry, at: next.lastEventAt } };
+  const { retry: _answered, ...answering } = next;
+  if (event.type === 'text') return { ...answering, draft: turn.draft + event.text };
+  if (event.type === 'reset-draft') return { ...answering, draft: '' };
+  return { ...answering, activities: [...turn.activities, event.activity] };
 }

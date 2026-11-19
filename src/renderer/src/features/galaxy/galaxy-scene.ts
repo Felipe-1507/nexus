@@ -24,6 +24,7 @@ import {
   ShaderMaterial,
   SphereGeometry,
   Vector2,
+  Vector4,
   Vector3,
   WebGLRenderer,
   type Material,
@@ -34,7 +35,7 @@ import type { GalaxyGraph } from '@shared/knowledge';
 import { hash01, planetColors, type PlanetStyle } from '@shared/planets';
 import type { GalaxyLayout } from './layout';
 import type { GalaxyLook } from '@shared/ipc-contract';
-import { createEclipse, eclipseQuality } from './eclipse';
+import { createEclipse, eclipseQuality, eclipseShadowRadius, patchStarLens, type StarLens } from './eclipse';
 import { createSun } from './sun';
 import { createComets, createFlows, isImportantRoute } from './route-effects';
 import { createShips, galaxyRadius } from './ship-effects';
@@ -62,6 +63,8 @@ const ROUTE_OPACITY = 0.16;
 const FLY_MS = 900;
 /** Velocidade do giro automático: o normal, o do modo contemplativo e o das paradas do tour. */
 const SPIN_SPEED = 0.25;
+/** Raio mínimo de um planeta na tela, em pixels CSS, no estilo Eclipse (de longe ele vira um ponto de luz). */
+const PLANET_MIN_PX = 1.6;
 const CONTEMPLATIVE_SPIN = 0.35;
 const TOUR_SPIN = 0.9;
 const CLICK_SLOP_PX = 5;
@@ -120,6 +123,12 @@ export class GalaxyScene {
   private sunInfo = { name: '', color: '#ffd98a' };
   /** Estilo do centro (independente do modo Leve/Original). */
   private look: GalaxyLook = 'atual';
+  /** Lente do buraco negro nas estrelas do fundo (estilo Eclipse): centro e raio da sombra na tela, e se está ligada. */
+  private readonly lens: StarLens = { uLens: { value: new Vector4() }, uLensOn: { value: 0 } };
+  /** Tamanho mínimo dos planetas na tela (estilo Eclipse). */
+  private readonly planetBoost = { uMinPx: { value: 0 }, uPxScale: { value: 1 } };
+  private shadowRadius = 0;
+  private readonly lensCenter = new Vector3();
   private planets: InstancedMesh | null = null;
   private systemLabels: Array<{ el: HTMLDivElement; pos: Vector3; extent: number }> = [];
   private selected: number | null = null;
@@ -282,13 +291,7 @@ export class GalaxyScene {
     this.profile = profile;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
     this.rim.value = profile.rim;
-    for (const layer of this.stars) {
-      this.scene.remove(layer);
-      layer.geometry.dispose();
-      (layer.material as Material).dispose();
-    }
-    this.stars = this.backgroundStars();
-    this.scene.add(...this.stars);
+    this.rebuildStars();
     if (this.graph.notes.length > 0) this.setData(this.graph, this.layout, this.styles);
     this.container.dataset.quality = profile.quality;
     this.fit();
@@ -302,7 +305,29 @@ export class GalaxyScene {
     if (look === this.look) return;
     this.look = look;
     this.container.dataset.look = look;
+    this.rebuildStars();
+    this.syncLook();
     if (this.graph.notes.length > 0) this.setData(this.graph, this.layout, this.styles);
+  }
+
+  /** Refaz as camadas de estrelas do fundo (mudou o modo ou o estilo). */
+  private rebuildStars(): void {
+    for (const layer of this.stars) {
+      this.scene.remove(layer);
+      layer.geometry.dispose();
+      (layer.material as Material).dispose();
+    }
+    this.stars = this.backgroundStars();
+    this.scene.add(...this.stars);
+  }
+
+  /** Liga ou desliga o que só existe no estilo Eclipse (lente nas estrelas e tamanho mínimo dos planetas). */
+  private syncLook(): void {
+    const eclipse = this.look === 'eclipse';
+    this.lens.uLensOn.value = eclipse ? 1 : 0;
+    this.planetBoost.uMinPx.value = eclipse ? PLANET_MIN_PX * this.renderer.getPixelRatio() : 0;
+    this.container.dataset.lens = eclipse ? 'on' : 'off';
+    this.wake();
   }
 
   /** Nome e cor do Workspace, que dão ao sol do centro o nome (rótulo) e a cor. */
@@ -638,12 +663,17 @@ export class GalaxyScene {
         opacity,
         fog: false,
       });
+      patchStarLens(material, this.lens);
       return new Points(geometry, material);
     };
-    return [
+    const layers = [
       layer(7, this.profile.backgroundStars, 2200, 3700, 1.3, 0.7, 0xbfc3e6),
       layer(13, this.profile.nearStars, 700, 1500, 1.7, 0.45, 0xe6e9ff),
     ];
+    // Estilo Eclipse: um campo mais denso e miúdo ao fundo, para a lente do buraco negro ter estrelas a entortar.
+    if (this.look === 'eclipse')
+      layers.push(layer(29, this.profile.eclipse.lensStars, 2000, 3400, 1.1, 0.55, 0xf0e4d2));
+    return layers;
   }
 
   /** Movimento ambiente da cena atual (nada, com movimento reduzido ou sem notas). */
@@ -763,6 +793,7 @@ export class GalaxyScene {
     );
     this.container.dataset.sun = this.sunInfo.name;
     this.container.dataset.look = this.look;
+    this.shadowRadius = this.look === 'eclipse' ? eclipseShadowRadius(radius) : 0;
   }
 
   private buildSystems(): void {
@@ -843,7 +874,11 @@ export class GalaxyScene {
     geometry.setAttribute('aGlow', new InstancedBufferAttribute(glow, 1));
     geometry.setAttribute('aMatch', new InstancedBufferAttribute(match, 1));
 
-    const mesh = new InstancedMesh(geometry, createPlanetMaterial(this.time, this.rim), Math.max(1, n));
+    const mesh = new InstancedMesh(
+      geometry,
+      createPlanetMaterial(this.time, this.rim, this.planetBoost),
+      Math.max(1, n),
+    );
     mesh.count = n;
     const m = new Matrix4();
     const c = new Color();
@@ -1026,7 +1061,35 @@ export class GalaxyScene {
     const ndc = new Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
     const hit = this.raycaster.intersectObject(this.planets, false)[0];
-    return hit?.instanceId ?? null;
+    if (hit?.instanceId !== undefined) return hit.instanceId;
+    return this.look === 'eclipse' ? this.pickNearest(x, y) : null;
+  }
+
+  /**
+   * Com o tamanho mínimo (estilo Eclipse), de longe o planeta que se vê é maior que o de verdade: o clique ganha uma
+   * área do tamanho do que aparece, escolhendo o planeta mais perto do ponteiro na tela.
+   */
+  private pickNearest(x: number, y: number): number | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const focal = rect.height / 2 / Math.tan((this.camera.fov * Math.PI) / 360);
+    const v = new Vector3();
+    let best: number | null = null;
+    let bestDist = Infinity;
+    this.layout.notes.forEach((p, i) => {
+      v.set(p.x, p.y, p.z);
+      const depth = this.camera.position.distanceTo(v);
+      v.project(this.camera);
+      if (v.z > 1) return;
+      const sx = rect.left + ((v.x + 1) / 2) * rect.width;
+      const sy = rect.top + ((1 - v.y) / 2) * rect.height;
+      const d = Math.hypot(sx - x, sy - y);
+      const reach = Math.max(PLANET_MIN_PX + 3, (p.size * focal) / depth + 3);
+      if (d <= reach && d < bestDist) {
+        best = i;
+        bestDist = d;
+      }
+    });
+    return best;
   }
 
   /**
@@ -1093,6 +1156,15 @@ export class GalaxyScene {
 
   // ---- quadro a quadro ----
 
+  /** Posição e tamanho da sombra do buraco negro na tela, para a lente nas estrelas (só no estilo Eclipse). */
+  private updateLens(): void {
+    const center = this.lensCenter.set(0, 0, 0).project(this.camera);
+    const dist = Math.max(this.camera.position.length(), 0.01);
+    const behind = center.z > 1 || this.shadowRadius === 0;
+    const radius = behind ? 0 : this.shadowRadius / (dist * Math.tan((this.camera.fov * Math.PI) / 360));
+    this.lens.uLens.value.set(center.x, center.y, radius, this.camera.aspect);
+  }
+
   private fit(): void {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (w === 0 || h === 0) return;
@@ -1101,6 +1173,9 @@ export class GalaxyScene {
     this.camera.updateProjectionMatrix();
     this.wake();
     this.haloMaterial.uniforms.scale!.value = h * this.renderer.getPixelRatio() * 0.6;
+    this.planetBoost.uPxScale.value =
+      (h * this.renderer.getPixelRatio()) / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    this.syncLook();
   }
 
   /** Marca a cena como alterada: o próximo quadro é desenhado (mesmo sem a câmera ter se mexido). */
@@ -1179,6 +1254,7 @@ export class GalaxyScene {
       if (planetChanged && this.selected === null) this.updateHighlight();
     }
     this.updateLabels();
+    if (this.look === 'eclipse') this.updateLens();
     this.renderer.render(this.scene, this.camera);
     this.rendered++;
     if (now - this.lastStats >= 1000) {

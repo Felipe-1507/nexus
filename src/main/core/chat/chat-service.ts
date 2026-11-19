@@ -32,7 +32,7 @@ import {
 import type { Workspace } from '@shared/workspace';
 import type { SessionConfig, SessionManager, TurnHandlers } from '../../agent/session-manager';
 import { convertTranscript, selectNewMessages, type TranscriptMessage } from '../../agent/transcript-import';
-import type { TurnOutcome } from '../../agent/turn-accumulator';
+import type { TurnEvent, TurnOutcome } from '../../agent/turn-accumulator';
 import { ConversationsRepo, type ConversationRow } from '../../persistence/repositories/conversations-repo';
 import { composeSystemPrompt, summarizeInstructions } from '../context/context-composer';
 import type { KnowledgeService } from '../knowledge/knowledge-service';
@@ -78,6 +78,8 @@ export interface ChatServiceDeps {
   /** Modelo fixo (testes); sem valor, vale a escolha da conversa ou os padrões. */
   model?: string;
   onError?: (message: string, error: unknown) => void;
+  /** Avisos que não são erros (ex.: o Claude Code tentando de novo): vão para o log. */
+  onNotice?: (message: string, detail?: unknown) => void;
   newId?: () => string;
   now?: () => string;
 }
@@ -121,7 +123,7 @@ export class ChatService {
     const assistantMessageId = this.newId();
     this.deps.emit({ type: 'spontaneous-start', conversationId, assistantMessageId });
     return {
-      onEvent: (event) => this.deps.emit({ ...event, conversationId, assistantMessageId }),
+      onEvent: (event) => this.relay(conversationId, assistantMessageId, event),
       onSessionId: (sessionId) => this.repo.setSessionId(conversationId, sessionId),
       onDone: (outcome) => {
         if (!outcome.content.trim() && outcome.activities.length === 0) {
@@ -132,6 +134,22 @@ export class ChatService {
         this.finishTurn(conversationId, assistantMessageId, outcome, true, null);
       },
     };
+  }
+
+  /** Repassa à tela um evento da resposta em andamento; as novas tentativas do Claude Code também vão para o log. */
+  private relay(conversationId: string, assistantMessageId: string, event: TurnEvent): void {
+    if (event.type === 'retry') {
+      const r = event.retry;
+      this.deps.onNotice?.('O Claude Code está tentando de novo', {
+        conversa: conversationId.slice(0, 8),
+        tentativa: `${r.attempt}/${r.maxRetries}`,
+        motivo: r.error,
+        status: r.status,
+        semRespostaMs: r.noResponseMs,
+        proximaEmMs: r.delayMs,
+      });
+    }
+    this.deps.emit({ ...event, conversationId, assistantMessageId });
   }
 
   /** Grava a resposta do turno, registra a medição, avisa a tela e deixa a fila andar. */
@@ -454,7 +472,7 @@ export class ChatService {
       config,
       { uuid: userMessage.id, text: promptWithAttachments(input.text, attachmentFiles) },
       {
-        onEvent: (event) => this.deps.emit({ ...event, conversationId, assistantMessageId }),
+        onEvent: (event) => this.relay(conversationId, assistantMessageId, event),
         onSessionId: (sessionId) => this.repo.setSessionId(conversationId, sessionId),
         onDone: (outcome) => this.finishTurn(conversationId, assistantMessageId, outcome, resumed, promptHash),
       },
