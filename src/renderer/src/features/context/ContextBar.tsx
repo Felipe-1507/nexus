@@ -58,6 +58,16 @@ export function ContextBar({ workspaceId, conversationId, forkedFrom, running, o
         )}
         <button
           type="button"
+          onClick={onContinue}
+          disabled={running}
+          data-testid="context-continue-bar"
+          title="Copia esta conversa, compacta a cópia e abre uma conversa nova. Vale também para conversas que já são continuações."
+          className="flex items-center gap-1.5 text-[11px] text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40"
+        >
+          <GitFork size={12} /> Continuar em nova conversa
+        </button>
+        <button
+          type="button"
           aria-expanded={open}
           aria-controls="context-details"
           onClick={() => setOpen((v) => !v)}
@@ -86,7 +96,7 @@ export function ContextBar({ workspaceId, conversationId, forkedFrom, running, o
       {open && (
         <div id="context-details" className="mx-auto max-w-3xl px-6 pb-3" data-testid="context-details">
           <Details snapshot={snapshot} view={view} promptChanged={promptChanged} />
-          {!running && snapshot && (
+          {!running && (
             <Button onClick={onContinue} className="mt-3" data-testid="context-continue">
               <GitFork size={14} /> Continuar em nova conversa
             </Button>

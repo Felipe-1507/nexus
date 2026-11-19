@@ -337,6 +337,23 @@ test('limites configuráveis mudam as faixas, recusam ordem inválida e sobreviv
   }
 });
 
+test('"Continuar em nova conversa" fica sempre na faixa, inclusive numa continuação e sem medição', async () => {
+  const { app, page, userData } = await launchSeeded();
+  try {
+    for (const title of [TITLE.fork, TITLE.none, TITLE.light]) {
+      await openConversation(page, title);
+      // Sem abrir o painel da pílula: o botão já está na faixa.
+      await page.getByTestId('context-continue-bar').click();
+      await expect(page.getByTestId('continue-dialog')).toBeVisible();
+      await page.getByRole('button', { name: 'Cancelar' }).click();
+      await expect(page.getByTestId('continue-dialog')).toBeHidden();
+    }
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});
+
 test('confirmação de "Continuar em nova conversa": mostra o custo e os avisos, e a falha não cria nada', async () => {
   const { app, page, userData } = await launchSeeded();
   try {
