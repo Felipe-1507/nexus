@@ -458,6 +458,10 @@ function openWindow(splash: Splash | null): void {
   watchWindowHealth(win, { log, showMessageBox: (w, options) => dialog.showMessageBox(w, options) });
 }
 
+/** Prazo (ms) para o encerramento terminar sozinho; depois disso o app sai à força. */
+const FORCE_EXIT_MS = 10_000;
+const FORCE_EXIT_AFTER_CLEANUP_MS = 3_000;
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -476,16 +480,35 @@ if (!app.requestSingleInstanceLock()) {
       app.exit(1);
     });
 
-  app.on('before-quit', () => background?.markQuitting());
-  app.on('window-all-closed', () => app.quit());
-  app.on('will-quit', () => {
-    // Antes de fechar o banco: pedidos de permissão são negados, respostas em andamento são gravadas como
-    // interrompidas e os processos encerrados.
+  let shutDown = false;
+  /** Antes de fechar o banco: pedidos de permissão são negados, respostas em andamento são gravadas como interrompidas e os processos encerrados. Roda uma vez só. */
+  const shutdown = () => {
+    if (shutDown) return;
+    shutDown = true;
+    log.info('Encerrando: limpando sessões, observadores e banco');
     broker?.cancelAll();
     sessions?.closeAll();
     knowledge?.close();
     codeWatcher?.close();
     background?.dispose();
     database?.db.close();
+    log.info('Encerramento limpo');
+  };
+  app.on('before-quit', () => {
+    log.info('Pedido para fechar o Nexus');
+    background?.markQuitting();
+    // Se uma janela ou processo não responder ao fechamento (tela travada, Claude preso), o app não pode ficar
+    // pendurado no Gerenciador de Tarefas: passado o prazo, limpa tudo e sai à força.
+    setTimeout(() => {
+      log.warn('O encerramento passou de ' + FORCE_EXIT_MS / 1000 + ' s; saindo à força.');
+      shutdown();
+      app.exit(0);
+    }, FORCE_EXIT_MS).unref();
+  });
+  app.on('window-all-closed', () => app.quit());
+  app.on('will-quit', () => {
+    shutdown();
+    // Já limpo: se o Electron ainda demorar para encerrar os processos de tela, sai logo.
+    setTimeout(() => app.exit(0), FORCE_EXIT_AFTER_CLEANUP_MS).unref();
   });
 }

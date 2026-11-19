@@ -192,6 +192,28 @@ describe('SessionManager', () => {
     manager.closeAll();
   });
 
+  it('depois de fechar tudo (app encerrando), nenhuma resposta nova começa', async () => {
+    const manager = new SessionManager({
+      createQuery: fakeClaude(async function* () {
+        yield result('success', 'ok');
+      }).createQuery,
+      env: {},
+    });
+    manager.closeAll();
+    expect(() =>
+      manager.startTurn(
+        'c1',
+        config,
+        { uuid: crypto.randomUUID(), text: 'a' },
+        {
+          onEvent: () => {},
+          onSessionId: () => {},
+          onDone: () => {},
+        },
+      ),
+    ).toThrow(/fechando/);
+  });
+
   it('sem quem trate respostas espontâneas, ou com fim de turno vazio, nada é aberto', async () => {
     const script: Script = async function* () {
       yield result('success', 'ok');

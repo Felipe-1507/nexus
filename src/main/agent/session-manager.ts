@@ -100,6 +100,8 @@ export class SessionManager {
   /** Última sessão do Claude Code de cada conversa, mesmo depois que o processo terminou. */
   private readonly knownSessionIds = new Map<string, string>();
   private spontaneous: ((conversationId: string) => TurnHandlers | null) | null = null;
+  /** O app está fechando: nenhuma resposta nova começa (a fila de mensagens não reabre o Claude no meio do encerramento). */
+  private closing = false;
 
   constructor(private readonly deps: SessionManagerDeps) {}
 
@@ -138,6 +140,7 @@ export class SessionManager {
     message: { uuid: string; text: string },
     handlers: TurnHandlers,
   ): void {
+    if (this.closing) throw new NexusError('CONFLICT', 'O Nexus está fechando.');
     let session = this.sessions.get(conversationId);
     if (session?.turn) throw new NexusError('CONFLICT', 'Aguarde a resposta atual terminar.');
 
@@ -200,6 +203,7 @@ export class SessionManager {
 
   /** Encerra tudo (app fechando). Turnos em andamento são registrados como interrompidos. */
   closeAll(): void {
+    this.closing = true;
     for (const id of [...this.sessions.keys()]) this.dispose(id, 'O Nexus foi fechado durante a resposta.');
   }
 

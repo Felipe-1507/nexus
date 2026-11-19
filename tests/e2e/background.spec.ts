@@ -54,3 +54,38 @@ test('fechar a janela esconde o Nexus; o ícone traz de volta; fechar de vez ped
     removeUserData(userData);
   }
 });
+
+test('fechar de vez termina mesmo com a tela travada (não fica pendurado no Gerenciador de Tarefas)', async () => {
+  test.setTimeout(90_000);
+  const { app, page, userData } = await launchApp();
+  let exited = false;
+  const closed = new Promise<void>((resolve) =>
+    app.on('close', () => {
+      exited = true;
+      resolve();
+    }),
+  );
+  try {
+    // A tela entra num laço infinito: não responde a nada, nem ao pedido de fechar a janela.
+    void page
+      .evaluate(() => {
+        for (;;);
+      })
+      .catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 500));
+    const started = Date.now();
+    void app
+      .evaluate(async ({ dialog }) => {
+        dialog.showMessageBox = (async () => ({ response: 0, checkboxChecked: false })) as never;
+        const g = globalThis as never as { __nexusBackground: { requestQuit: () => Promise<boolean> } };
+        await g.__nexusBackground.requestQuit();
+      })
+      .catch(() => undefined);
+    await Promise.race([closed, new Promise((r) => setTimeout(r, 40_000))]);
+    expect(exited).toBe(true);
+    expect(Date.now() - started).toBeLessThan(30_000);
+  } finally {
+    if (!exited) await app.close().catch(() => undefined);
+    removeUserData(userData);
+  }
+});
