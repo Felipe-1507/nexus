@@ -15,6 +15,8 @@ export const preferencesSchema = z.object({
   seenModels: z.array(z.string().max(100)).max(500).nullable().default(null),
   /** Modo de visualização da galáxia (Configurações → Aparência). */
   galaxyQuality: z.enum(['leve', 'original']).default('leve'),
+  /** Estilo da galáxia: o visual de sempre ou o núcleo "Eclipse" (buraco negro). Independe do modo (Leve/Original). */
+  galaxyLook: z.enum(['atual', 'eclipse']).default('atual'),
   /** Cor de destaque escolhida (`null` = a da marca). */
   accent: z
     .string()

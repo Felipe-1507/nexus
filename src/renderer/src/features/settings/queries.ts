@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import type { GalaxyQuality, OpenablePath, Theme } from '@shared/ipc-contract';
+import type { GalaxyLook, GalaxyQuality, OpenablePath, Theme } from '@shared/ipc-contract';
 import type { Appearance } from '@shared/palette';
 import { applyAppearance } from '@renderer/lib/appearance';
 import { invoke } from '@renderer/lib/ipc';
@@ -10,6 +10,7 @@ export const settingsKeys = {
   preferences: ['preferences'] as const,
   appearance: ['appearance'] as const,
   galaxyQuality: ['galaxy', 'quality'] as const,
+  galaxyLook: ['galaxy', 'look'] as const,
 };
 
 export function useAppInfo() {
@@ -69,6 +70,18 @@ export function useSetGalaxyQuality() {
   return useMutation({
     mutationFn: (quality: GalaxyQuality) => invoke('galaxy:setQuality', quality),
     onSuccess: (data) => queryClient.setQueryData(settingsKeys.galaxyQuality, data),
+  });
+}
+
+export function useGalaxyLook() {
+  return useQuery({ queryKey: settingsKeys.galaxyLook, queryFn: () => invoke('galaxy:getLook') });
+}
+
+export function useSetGalaxyLook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (look: GalaxyLook) => invoke('galaxy:setLook', look),
+    onSuccess: (data) => queryClient.setQueryData(settingsKeys.galaxyLook, data),
   });
 }
 

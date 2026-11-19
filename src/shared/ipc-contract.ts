@@ -98,6 +98,9 @@ export type PreferencesView = z.infer<typeof preferencesViewSchema>;
 /** Modo de visualização da galáxia: Leve (dia a dia, econômico) ou Original (a experiência completa, de referência). */
 export const galaxyQualitySchema = z.enum(['leve', 'original']);
 export type GalaxyQuality = z.infer<typeof galaxyQualitySchema>;
+/** Estilo da galáxia (separado da qualidade): `atual` ou `eclipse`. */
+export const galaxyLookSchema = z.enum(['atual', 'eclipse']);
+export type GalaxyLook = z.infer<typeof galaxyLookSchema>;
 
 /** Pastas que o renderer pode pedir para abrir no Explorer. Nunca um caminho arbitrário. */
 export const openablePathSchema = z.enum(['userData', 'logs']);
@@ -129,6 +132,8 @@ export const ipcContract = {
   'preferences:setTheme': { input: themeSchema, output: preferencesViewSchema },
   'galaxy:getQuality': { input: z.undefined(), output: z.object({ quality: galaxyQualitySchema }) },
   'galaxy:setQuality': { input: galaxyQualitySchema, output: z.object({ quality: galaxyQualitySchema }) },
+  'galaxy:getLook': { input: z.undefined(), output: z.object({ look: galaxyLookSchema }) },
+  'galaxy:setLook': { input: galaxyLookSchema, output: z.object({ look: galaxyLookSchema }) },
   'appearance:get': { input: z.undefined(), output: appearanceSchema },
   'appearance:set': { input: appearanceSchema.partial(), output: appearanceSchema },
   'workspaces:list': { input: z.undefined(), output: workspaceListSchema },

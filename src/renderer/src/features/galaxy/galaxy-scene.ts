@@ -33,6 +33,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GalaxyGraph } from '@shared/knowledge';
 import { hash01, planetColors, type PlanetStyle } from '@shared/planets';
 import type { GalaxyLayout } from './layout';
+import type { GalaxyLook } from '@shared/ipc-contract';
+import { createEclipse, eclipseQuality } from './eclipse';
 import { createSun } from './sun';
 import { createComets, createFlows, isImportantRoute } from './route-effects';
 import { createShips, galaxyRadius } from './ship-effects';
@@ -116,6 +118,8 @@ export class GalaxyScene {
   private layout: GalaxyLayout = { sun: { radius: 0 }, systems: [], orbits: [], notes: [] };
   /** Nome e cor (hex) do Workspace: o sol do centro. */
   private sunInfo = { name: '', color: '#ffd98a' };
+  /** Estilo do centro (independente do modo Leve/Original). */
+  private look: GalaxyLook = 'atual';
   private planets: InstancedMesh | null = null;
   private systemLabels: Array<{ el: HTMLDivElement; pos: Vector3; extent: number }> = [];
   private selected: number | null = null;
@@ -179,9 +183,12 @@ export class GalaxyScene {
       openOnClick: boolean;
       /** Modo Leve ou Original (quality.ts). Pode ser trocado depois com `setProfile`. */
       profile: GalaxyProfile;
+      /** Estilo: o sol de sempre ou o núcleo Eclipse. Pode ser trocado depois com `setLook`. */
+      look?: GalaxyLook;
     },
   ) {
     this.profile = options.profile;
+    this.look = options.look ?? 'atual';
     this.rim = { value: options.profile.rim };
     this.autoRotate = !options.reducedMotion;
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -285,6 +292,17 @@ export class GalaxyScene {
     if (this.graph.notes.length > 0) this.setData(this.graph, this.layout, this.styles);
     this.container.dataset.quality = profile.quality;
     this.fit();
+  }
+
+  /**
+   * Troca o estilo do centro (sol ou Eclipse) sem mexer em posições, seleção nem câmera: só o objeto do centro é
+   * refeito (a cena é remontada com o mesmo layout, como na troca de modo).
+   */
+  setLook(look: GalaxyLook): void {
+    if (look === this.look) return;
+    this.look = look;
+    this.container.dataset.look = look;
+    if (this.graph.notes.length > 0) this.setData(this.graph, this.layout, this.styles);
   }
 
   /** Nome e cor do Workspace, que dão ao sol do centro o nome (rótulo) e a cor. */
@@ -724,16 +742,27 @@ export class GalaxyScene {
   /** O sol do Workspace no centro: a estrela do núcleo e o ponto de luz de toda a galáxia. Sem rotas nem ligações. */
   private buildSun(): void {
     if (this.layout.systems.length === 0) return;
+    const radius = this.layout.sun.radius;
     this.content.add(
-      ...createSun({
-        radius: this.layout.sun.radius,
-        color: this.sunInfo.color,
-        time: this.time,
-        halo: this.haloMaterial,
-        layers: this.profile.sunLayers,
-      }),
+      ...(this.look === 'eclipse'
+        ? createEclipse({
+            radius,
+            color: this.sunInfo.color,
+            time: this.time,
+            scale: this.haloMaterial.uniforms.scale as { value: number },
+            halo: this.haloMaterial,
+            quality: eclipseQuality(this.profile),
+          })
+        : createSun({
+            radius,
+            color: this.sunInfo.color,
+            time: this.time,
+            halo: this.haloMaterial,
+            layers: this.profile.sunLayers,
+          })),
     );
     this.container.dataset.sun = this.sunInfo.name;
+    this.container.dataset.look = this.look;
   }
 
   private buildSystems(): void {
