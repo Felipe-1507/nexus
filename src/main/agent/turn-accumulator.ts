@@ -74,6 +74,10 @@ const ERROR_MESSAGES: Record<string, string> = {
  * As mensagens `assistant` chegam um bloco por vez e sem `stop_reason`, por isso a decisão usa os eventos de
  * streaming (`content_block_start` de `tool_use` e `message_delta`).
  */
+/** Texto escondido a partir do qual vale resgatar (e tamanho máximo da frase final que o acompanha). */
+const BURIED_MIN = 500;
+const BURIED_FINAL_MAX = 300;
+
 export class TurnAccumulator {
   sessionId: string | null = null;
   model: string | null = null;
@@ -251,7 +255,7 @@ export class TurnAccumulator {
       this.outcome = {
         ...base,
         status: 'complete',
-        content: (msg.result ?? '').trim() || this.draft.trim(),
+        content: this.recoverBuriedAnswer((msg.result ?? '').trim() || this.draft.trim()),
         error: null,
       };
     } else if (msg.subtype === 'error_during_execution' && this.interrupted) {
@@ -279,6 +283,33 @@ export class TurnAccumulator {
       fileChanges: this.changes.list(),
     };
     return this.outcome;
+  }
+
+  /**
+   * Rede de segurança: se o Claude escreveu a resposta inteira antes de uma ferramenta (por exemplo, antes de registrar
+   * uma nota) e fechou só com uma frase curta, o texto longo estaria escondido em "Ver detalhes" e o usuário veria só
+   * o aviso. Nesse caso o texto longo volta para a resposta, à frente da frase final, e sai da lista de passos.
+   */
+  private recoverBuriedAnswer(final: string): string {
+    if (final.length >= BURIED_FINAL_MAX) return final;
+    let longest = -1;
+    this.activities.forEach((a, i) => {
+      if (
+        a.kind === 'intermediate' &&
+        a.label.length >= BURIED_MIN &&
+        a.label.length > (this.activities[longest]?.label.length ?? 0)
+      ) {
+        longest = i;
+      }
+    });
+    const buried = this.activities[longest];
+    if (!buried) return final;
+    this.activities.splice(longest, 1);
+    return final
+      ? `${buried.label}
+
+${final}`
+      : buried.label;
   }
 
   private flushIntermediate(): void {

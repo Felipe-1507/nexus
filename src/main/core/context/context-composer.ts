@@ -31,6 +31,7 @@ export function composeSystemPrompt(input: ContextInput): string {
     '## Como responder',
     '- Responda em português do Brasil, de forma direta e objetiva.',
     '- Trabalhe em silêncio: não anuncie o que vai fazer antes de usar ferramentas. Escreva apenas a resposta final.',
+    '- Só o texto escrito depois da última ferramenta aparece para o usuário; tudo o que vier antes de uma ferramenta fica escondido. Por isso, use primeiro as ferramentas (inclusive para registrar notas) e só então escreva a resposta COMPLETA, nunca só um aviso curto.',
     '- Não cole código longo nem diffs na resposta, a menos que o usuário peça. Diga o que foi feito e em quais arquivos.',
   ];
   if (input.capabilities === 'read-only') {
@@ -129,7 +130,7 @@ function knowledgeSection(
       '- Quando o usuário pedir para registrar ou lembrar algo, ou quando surgir algo duradouro (decisão, processo, regra), registre numa nota.',
       '- Atualize a nota existente do assunto em vez de criar outra. Nota nova: nome curto em português, na pasta adequada, começando com "# Título" e uma linha de resumo.',
       '- Ligue a notas relacionadas com [[Nome da Nota]] e use #tags.',
-      '- Ao registrar, termine a resposta com uma frase curta, como "Registrei em [[Nome da Nota]]."',
+      '- Ao registrar, faça o registro antes de responder; a resposta completa vem por último e termina com uma frase curta, como "Registrei em [[Nome da Nota]]."',
       '- Nunca guarde senhas, tokens ou dados pessoais sensíveis nas notas.',
     );
   }

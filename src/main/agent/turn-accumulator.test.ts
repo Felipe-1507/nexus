@@ -128,6 +128,58 @@ describe('TurnAccumulator com turnos que o Claude Code inicia sozinho', () => {
   });
 });
 
+describe('resposta escondida antes de uma ferramenta', () => {
+  const text = (t: string) =>
+    ({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: t } },
+    }) as never;
+  const toolStart = {
+    type: 'stream_event',
+    parent_tool_use_id: null,
+    event: { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 't1', name: 'Bash' } },
+  } as never;
+  const done = (result: string) =>
+    ({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    }) as never;
+
+  function run(before: string, after: string) {
+    const acc = new TurnAccumulator(() => {});
+    acc.push(text(before));
+    acc.push(toolStart);
+    acc.push(text(after));
+    acc.push(done(after));
+    return acc.done!;
+  }
+
+  it('resposta longa antes da ferramenta e só um aviso depois: a resposta volta para a mensagem', () => {
+    const long = 'Explicação detalhada. '.repeat(40);
+    const out = run(long, 'Registrei em [[Nota]].');
+    expect(out.content).toBe(`${long.trim()}
+
+Registrei em [[Nota]].`);
+    expect(out.activities.some((a) => a.kind === 'intermediate')).toBe(false);
+  });
+
+  it('narração curta antes da ferramenta continua escondida', () => {
+    const out = run('Vou ler o arquivo.', 'O código é 4721.');
+    expect(out.content).toBe('O código é 4721.');
+    expect(out.activities).toEqual([{ kind: 'intermediate', label: 'Vou ler o arquivo.' }]);
+  });
+
+  it('com resposta final longa, o texto de antes continua escondido', () => {
+    const out = run('Passo a passo. '.repeat(50), 'Resposta completa. '.repeat(30));
+    expect(out.content).toBe('Resposta completa. '.repeat(30).trim());
+    expect(out.activities.some((a) => a.kind === 'intermediate')).toBe(true);
+  });
+});
+
 describe('TurnAccumulator com casos sintéticos', () => {
   it('traduz erros da API para mensagens em pt-BR', () => {
     const acc = new TurnAccumulator(() => {});
