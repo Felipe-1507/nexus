@@ -9,6 +9,7 @@ import { ClaudeStatusPanel } from '@renderer/features/claude/ClaudeStatusPanel';
 import { ThresholdsSection } from '@renderer/features/context/ThresholdsSection';
 import { PrivacyText, usePrivacy } from '@renderer/features/privacy/PrivacyNotice';
 import { ExtensionsSection } from '@renderer/features/extensions/ExtensionsSection';
+import { AppUpdateSection } from '@renderer/features/app-update/AppUpdateSection';
 import { BackupSection } from '@renderer/features/backup/BackupSection';
 import { WelcomeSection } from '@renderer/features/welcome/WelcomeSection';
 import { AppearanceColors } from './AppearanceColors';
@@ -52,6 +53,7 @@ export function SettingsView() {
           <WelcomeSection />
           <DataFolders />
           <BackupSection />
+          <AppUpdateSection />
           <AttachmentsSection />
           <ThresholdsSection />
           <Privacy />

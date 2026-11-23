@@ -151,3 +151,44 @@ test('backup manual cria um .zip com banco, preferências e notas', async () => 
     removeUserData(userData);
   }
 });
+
+test('atualização do Nexus: pasta com versão nova mostra o aviso; pasta sem manifesto mostra o erro', async () => {
+  const userData = tempUserData();
+  const feed = path.join(userData, 'versoes');
+  fs.mkdirSync(feed, { recursive: true });
+  fs.writeFileSync(path.join(feed, 'Nexus-9.9.9-instalador.exe'), 'x');
+  fs.writeFileSync(
+    path.join(feed, 'nexus-update.json'),
+    JSON.stringify({ version: '9.9.9', file: 'Nexus-9.9.9-instalador.exe', sha512: 'a'.repeat(128) }),
+  );
+  const { app, page } = await launchApp(userData);
+  try {
+    await setup(page, 'Trabalho');
+    await page
+      .getByRole('navigation', { name: 'Navegação principal' })
+      .getByRole('button', { name: 'Configurações' })
+      .click();
+    const section = page.getByTestId('app-update-section');
+    // Desligada por padrão: nada de aviso.
+    await expect(page.getByTestId('app-update-notice')).toHaveCount(0);
+
+    const source = section.getByTestId('app-update-source');
+    await source.fill(path.join(userData, 'nao-existe'));
+    await source.blur();
+    await expect(section.getByTestId('app-update-status')).toContainText('Não há nexus-update.json');
+
+    await source.fill(feed);
+    await source.blur();
+    await expect(section.getByTestId('app-update-status')).toContainText('Versão 9.9.9 disponível');
+    await expect(section.getByTestId('app-update-install')).toBeVisible();
+    await expect(page.getByTestId('app-update-notice')).toContainText('Nexus 9.9.9 disponível');
+
+    // Endereço HTTP de fora é recusado antes de gravar.
+    await source.fill('http://exemplo.com/versoes');
+    await source.blur();
+    await expect(section.getByRole('alert')).toContainText('HTTPS');
+  } finally {
+    await app.close();
+    removeUserData(userData);
+  }
+});

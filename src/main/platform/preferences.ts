@@ -25,6 +25,8 @@ export const preferencesSchema = z.object({
   welcomeName: z.string().trim().max(40).nullable().default(null),
   /** Quando a tela de boas-vindas foi vista pela última vez (início do próximo resumo). */
   welcomeLastAt: z.string().nullable().default(null),
+  /** Pasta ou endereço HTTPS de onde o Nexus se atualiza (`null` = desligado). */
+  updateSource: z.string().trim().max(500).nullable().default(null),
   /** Cor de destaque escolhida (`null` = a da marca). */
   accent: z
     .string()

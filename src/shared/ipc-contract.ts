@@ -32,6 +32,7 @@ import {
 import { planetOverrideSchema } from './planets';
 import { searchInputSchema, searchResultSchema } from './search';
 import { usageSchema } from './usage';
+import { appUpdateSettingsSchema, appUpdateStatusSchema } from './app-update';
 import { contentSearchInputSchema, contentSearchResultSchema } from './content-search';
 import { extensionsListSchema, extensionsProbeSchema } from './extensions';
 import { backupPreviewSchema, backupResultSchema } from './backup';
@@ -139,6 +140,11 @@ export const ipcContract = {
   'galaxy:setQuality': { input: galaxyQualitySchema, output: z.object({ quality: galaxyQualitySchema }) },
   'galaxy:getLook': { input: z.undefined(), output: z.object({ look: galaxyLookSchema }) },
   'galaxy:setLook': { input: galaxyLookSchema, output: z.object({ look: galaxyLookSchema }) },
+  /** Atualização do próprio Nexus: de onde vêm as versões, se há uma nova e a instalação (que fecha o app). */
+  'appUpdate:settings': { input: z.undefined(), output: appUpdateSettingsSchema },
+  'appUpdate:setSettings': { input: appUpdateSettingsSchema, output: appUpdateSettingsSchema },
+  'appUpdate:status': { input: z.object({ refresh: z.boolean() }), output: appUpdateStatusSchema },
+  'appUpdate:install': { input: z.undefined(), output: z.null() },
   /** Procura no texto das notas ou nos arquivos dos projetos (lê os arquivos na hora, com limites de tempo e tamanho). */
   'search:content': { input: contentSearchInputSchema, output: contentSearchResultSchema },
   /** O que está configurado (MCP e plugins) para o Workspace, lendo só arquivos; não abre o Claude Code. */

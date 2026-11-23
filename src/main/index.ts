@@ -7,6 +7,7 @@ import {
   renameSession,
 } from '@anthropic-ai/claude-agent-sdk';
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,6 +56,8 @@ import { contextHandlers } from './ipc/handlers/context';
 import { knowledgeHandlers } from './ipc/handlers/knowledge';
 import { permissionHandlers } from './ipc/handlers/permissions';
 import { projectHandlers } from './ipc/handlers/projects';
+import { appUpdateHandlers } from './ipc/handlers/app-update';
+import { AppUpdateService } from './agent/app-update';
 import { contentSearchHandlers } from './ipc/handlers/content-search';
 import { extensionsHandlers } from './ipc/handlers/extensions';
 import { probeExtensions, type CreateProbeQuery } from './agent/extensions-probe';
@@ -435,6 +438,22 @@ function bootstrap(): void {
           }
           return openSetupConsole('o login do Claude Code', loginCommand(status.cli.path));
         },
+        ...appUpdateHandlers(
+          new AppUpdateService({
+            source: () => prefs.get().updateSource,
+            currentVersion: app.getVersion(),
+            downloadDir: path.join(paths.userData, 'updates'),
+            fetch: (url, init) => fetch(url, init),
+            launch: (file, args) => {
+              // Solto do Nexus: continua rodando depois que o app fechar.
+              spawn(file, args, { detached: true, stdio: 'ignore' }).unref();
+              log.info('Instalador de atualização iniciado', { arquivo: path.basename(file) });
+            },
+            quit: () => app.quit(),
+          }),
+          (source) => prefs.update({ updateSource: source }).updateSource,
+          () => prefs.get().updateSource,
+        ),
         ...contentSearchHandlers({
           notes: (workspaceId) => notes.notesText(workspaceId),
           projects: async (workspaceId, projectId) =>
