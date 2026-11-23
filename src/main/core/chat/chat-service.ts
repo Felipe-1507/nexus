@@ -336,6 +336,23 @@ export class ChatService {
     return this.queued(conversationId);
   }
 
+  /**
+   * Troca o texto de uma mensagem que ainda espera na fila. Se ela já começou a ser enviada (saiu da fila), avisa em
+   * vez de editar em silêncio algo que o Claude já recebeu.
+   */
+  editQueued(conversationId: string, id: string, text: string): QueuedMessage[] {
+    this.requireConversation(conversationId);
+    const item = this.queues.get(conversationId)?.find((q) => q.id === id);
+    if (!item) throw new NexusError('NOT_FOUND', 'Essa mensagem já foi enviada e não dá mais para editar.');
+    const clean = text.trim();
+    if (clean.length === 0 && (item.input.attachments?.length ?? 0) === 0) {
+      throw new NexusError('VALIDATION', 'Escreva uma mensagem (ou tire-a da fila).');
+    }
+    item.input = { ...item.input, text: clean };
+    this.emitQueue(conversationId);
+    return this.queued(conversationId);
+  }
+
   /** Todas as filas não vazias (a tela recarregada recompõe a fila a partir daqui). */
   allQueued(): Array<{ conversationId: string; items: QueuedMessage[] }> {
     return [...this.queues.keys()]

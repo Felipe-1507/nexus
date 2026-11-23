@@ -337,6 +337,28 @@ describe('fila de mensagens enquanto o Claude responde', () => {
     expect(sessions.turns).toHaveLength(1);
   });
 
+  it('dá para editar o texto de uma mensagem na fila, e é a versão editada que vai', async () => {
+    const { ws, conversationId } = await conversationWithRunningTurn();
+    const [item] = chat.enqueue({ workspaceId: ws.id, conversationId, text: 'versão velha' });
+    const edited = chat.editQueued(conversationId, item!.id, '  versão nova  ');
+    expect(edited).toEqual([{ id: item!.id, text: 'versão nova', attachments: 0 }]);
+    expect(events.filter((e) => e.type === 'queue').at(-1)).toMatchObject({ items: [{ text: 'versão nova' }] });
+
+    sessions.turns[0]!.h.onDone(outcome('ok'));
+    await vi.waitFor(() => expect(sessions.turns).toHaveLength(2));
+    expect(sessions.turns[1]).toMatchObject({ text: 'versão nova' });
+  });
+
+  it('não edita mensagem que já saiu da fila, nem deixa a edição esvaziar a mensagem', async () => {
+    const { ws, conversationId } = await conversationWithRunningTurn();
+    const [item] = chat.enqueue({ workspaceId: ws.id, conversationId, text: 'texto' });
+    expect(() => chat.editQueued(conversationId, item!.id, '   ')).toThrow(/Escreva uma mensagem/);
+    sessions.turns[0]!.h.onDone(outcome('ok'));
+    await vi.waitFor(() => expect(sessions.turns).toHaveLength(2));
+    expect(() => chat.editQueued(conversationId, item!.id, 'tarde demais')).toThrow(/já foi enviada/);
+    expect(sessions.turns[1]).toMatchObject({ text: 'texto' });
+  });
+
   it('sem nada respondendo, a mensagem enfileirada começa na hora', async () => {
     const ws = workspaces.create({ name: 'Livre', ...base });
     const first = await chat.send({ workspaceId: ws.id, text: 'oi' });

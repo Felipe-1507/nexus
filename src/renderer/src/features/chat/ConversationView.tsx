@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { Pencil, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Attachment } from '@shared/chat';
 import type { ModelChoice } from '@shared/models';
@@ -25,6 +25,7 @@ import { SyncButton } from './SyncButton';
 import {
   useConversations,
   useDequeueMessage,
+  useEditQueued,
   useEnqueueMessage,
   useInterrupt,
   useMessages,
@@ -51,6 +52,7 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
   const [continueOpen, setContinueOpen] = useState(false);
   const enqueue = useEnqueueMessage();
   const dequeue = useDequeueMessage();
+  const editQueued = useEditQueued();
   const pending = useChat((s) => (conversationId ? s.pending[conversationId] : undefined));
   const send = useSendMessage();
   const interrupt = useInterrupt();
@@ -228,6 +230,7 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
               items={queue}
               error={queueError}
               onRemove={(id) => dequeue.mutate({ conversationId, id })}
+              onEdit={(id, text) => editQueued.mutateAsync({ conversationId, id, text }).then(() => undefined)}
               onDismissError={() => useChat.getState().clearQueueError(conversationId)}
             />
           )}
@@ -298,44 +301,30 @@ const PAGE_SIZE = 100;
 /** Quanto tempo a mensagem achada pela busca fica em destaque (combina com a animação em styles.css). */
 const FOUND_MS = 2800;
 
-/** Mensagens que o usuário já escreveu e que esperam a resposta atual terminar. */
+/** Mensagens que o usuário já escreveu e que esperam a resposta atual terminar. Dá para editar o texto enquanto esperam. */
 function QueueList({
   items,
   error,
   onRemove,
+  onEdit,
   onDismissError,
 }: {
   items: Array<{ id: string; text: string; attachments: number }>;
   error?: string;
   onRemove: (id: string) => void;
+  onEdit: (id: string, text: string) => Promise<void>;
   onDismissError: () => void;
 }) {
   return (
     <div className="mb-2 space-y-1" data-testid="message-queue">
       {items.map((item, i) => (
-        <div
+        <QueueItem
           key={item.id}
-          className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface px-3 py-1.5 text-xs"
-        >
-          <span className="shrink-0 text-muted">Na fila{items.length > 1 ? ` (${i + 1})` : ''}</span>
-          <span className="min-w-0 flex-1 truncate">
-            {item.text || 'Anexos'}
-            {item.attachments > 0 && item.text && (
-              <span className="text-muted">
-                {' '}
-                + {item.attachments} {item.attachments === 1 ? 'anexo' : 'anexos'}
-              </span>
-            )}
-          </span>
-          <button
-            type="button"
-            aria-label={`Tirar da fila: ${item.text.slice(0, 40)}`}
-            onClick={() => onRemove(item.id)}
-            className="rounded p-0.5 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
-          >
-            <X size={13} />
-          </button>
-        </div>
+          item={item}
+          label={`Na fila${items.length > 1 ? ` (${i + 1})` : ''}`}
+          onRemove={onRemove}
+          onEdit={onEdit}
+        />
       ))}
       {error && (
         <div
@@ -353,6 +342,136 @@ function QueueList({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function QueueItem({
+  item,
+  label,
+  onRemove,
+  onEdit,
+}: {
+  item: { id: string; text: string; attachments: number };
+  label: string;
+  onRemove: (id: string) => void;
+  onEdit: (id: string, text: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.text);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const field = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const el = field.current;
+    el?.focus();
+    el?.setSelectionRange(el.value.length, el.value.length);
+  }, [editing]);
+
+  const start = () => {
+    setDraft(item.text);
+    setFailure(null);
+    setEditing(true);
+  };
+  const cancel = () => setEditing(false);
+  const save = async () => {
+    if (draft.trim() === item.text) return cancel();
+    setSaving(true);
+    try {
+      await onEdit(item.id, draft);
+      setEditing(false);
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="rounded-xl border border-accent bg-surface px-3 py-2 text-xs" data-testid="queue-editor">
+        <textarea
+          ref={field}
+          value={draft}
+          rows={Math.min(8, Math.max(2, draft.split(/\r?\n/).length))}
+          aria-label="Editar mensagem da fila"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              cancel();
+            } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void save();
+            }
+          }}
+          className="block w-full resize-none rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-accent"
+        />
+        {item.attachments > 0 && (
+          <p className="mt-1 text-muted">
+            + {item.attachments} {item.attachments === 1 ? 'anexo' : 'anexos'} (continuam na mensagem)
+          </p>
+        )}
+        {failure && (
+          <p role="alert" className="mt-1 text-danger">
+            {failure}
+          </p>
+        )}
+        <div className="mt-1.5 flex items-center justify-end gap-2">
+          <span className="mr-auto text-muted">Enter salva · Shift+Enter quebra a linha · Esc cancela</span>
+          <button
+            type="button"
+            onClick={cancel}
+            className="rounded px-2 py-1 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void save()}
+            className="rounded bg-accent px-2.5 py-1 font-medium text-white hover:brightness-110 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            data-testid="queue-save"
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface px-3 py-1.5 text-xs">
+      <span className="shrink-0 text-muted">{label}</span>
+      <span className="min-w-0 flex-1 truncate">
+        {item.text || 'Anexos'}
+        {item.attachments > 0 && item.text && (
+          <span className="text-muted">
+            {' '}
+            + {item.attachments} {item.attachments === 1 ? 'anexo' : 'anexos'}
+          </span>
+        )}
+      </span>
+      <button
+        type="button"
+        aria-label={`Editar mensagem da fila: ${item.text.slice(0, 40)}`}
+        onClick={start}
+        className="rounded p-0.5 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
+        data-testid="queue-edit"
+      >
+        <Pencil size={13} />
+      </button>
+      <button
+        type="button"
+        aria-label={`Tirar da fila: ${item.text.slice(0, 40)}`}
+        onClick={() => onRemove(item.id)}
+        className="rounded p-0.5 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        <X size={13} />
+      </button>
     </div>
   );
 }

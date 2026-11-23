@@ -6,6 +6,7 @@ import {
   chatMessageSchema,
   conversationSchema,
   enqueueMessageSchema,
+  editQueuedSchema,
   queuedMessageSchema,
   sendMessageResultSchema,
   sendMessageSchema,
@@ -214,6 +215,8 @@ export const ipcContract = {
     input: z.object({ conversationId: z.uuid(), id: z.string() }),
     output: z.array(queuedMessageSchema),
   },
+  /** Edita o texto de uma mensagem da fila antes da vez dela. Falha se ela já começou a ser enviada. */
+  'chat:editQueued': { input: editQueuedSchema, output: z.array(queuedMessageSchema) },
   'chat:queues': {
     input: z.undefined(),
     output: z.array(z.object({ conversationId: z.uuid(), items: z.array(queuedMessageSchema) })),

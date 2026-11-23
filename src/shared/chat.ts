@@ -116,6 +116,13 @@ export const enqueueMessageSchema = z
     path: ['text'],
   });
 
+/** Troca o texto de uma mensagem que ainda espera na fila (os anexos continuam os mesmos). */
+export const editQueuedSchema = z.object({
+  conversationId: z.uuid(),
+  id: z.string(),
+  text: z.string().trim().max(MESSAGE_MAX_CHARS, 'Mensagem longa demais'),
+});
+
 /**
  * O Claude Code não conseguiu uma resposta da API e vai tentar de novo (aviso `api_retry` do SDK). `error` é o motivo
  * como o SDK informa (`rate_limit`, `overloaded`, `server_error`…); `noResponseMs` só vem quando a API nem começou a

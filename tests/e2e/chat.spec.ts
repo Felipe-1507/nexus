@@ -161,10 +161,24 @@ test.describe('com o Claude Code real', () => {
     await composer(page).press('Enter');
     await expect(page.getByTestId('message-queue')).toContainText('Agora diga só a palavra: pronto');
 
+    // Ainda na fila, a mensagem pode ser editada: Esc cancela, Enter salva, e a versão nova é a que vai.
+    await page.getByTestId('queue-edit').click();
+    const editor = page.getByRole('textbox', { name: 'Editar mensagem da fila' });
+    await editor.fill('texto descartado');
+    await editor.press('Escape');
+    await expect(page.getByTestId('message-queue')).toContainText('Agora diga só a palavra: pronto');
+    await page.getByTestId('queue-edit').click();
+    await editor.fill('Agora diga só a palavra: concluido');
+    await editor.press('Enter');
+    await expect(page.getByTestId('queue-editor')).toHaveCount(0);
+    await expect(page.getByTestId('message-queue')).toContainText('Agora diga só a palavra: concluido');
+
     // A primeira resposta termina, a fila anda sozinha e a segunda resposta vem depois, na ordem.
     await expect(page.getByTestId('message-user')).toHaveCount(2, { timeout: 120_000 });
     await expect(page.getByTestId('message-assistant').nth(0)).toContainText('4721', { timeout: 120_000 });
-    await expect(page.getByTestId('message-assistant').nth(1)).toContainText(/pronto/i, { timeout: 120_000 });
+    await expect(page.getByTestId('message-assistant').nth(1)).toContainText(/concluido|concluído/i, {
+      timeout: 120_000,
+    });
     await expect(page.getByTestId('message-queue')).toHaveCount(0);
     await expect(page.getByTestId('message-live')).toHaveCount(0);
   });

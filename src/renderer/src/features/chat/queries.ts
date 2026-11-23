@@ -90,6 +90,12 @@ export function useDequeueMessage() {
   });
 }
 
+export function useEditQueued() {
+  return useMutation({
+    mutationFn: (input: { conversationId: string; id: string; text: string }) => invoke('chat:editQueued', input),
+  });
+}
+
 export function useInterrupt() {
   return useMutation({ mutationFn: (conversationId: string) => invoke('chat:interrupt', { conversationId }) });
 }
