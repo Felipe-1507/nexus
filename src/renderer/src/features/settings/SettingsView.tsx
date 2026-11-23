@@ -8,6 +8,8 @@ import { useLayout } from '@renderer/app/shell/layout-store';
 import { ClaudeStatusPanel } from '@renderer/features/claude/ClaudeStatusPanel';
 import { ThresholdsSection } from '@renderer/features/context/ThresholdsSection';
 import { PrivacyText, usePrivacy } from '@renderer/features/privacy/PrivacyNotice';
+import { ExtensionsSection } from '@renderer/features/extensions/ExtensionsSection';
+import { BackupSection } from '@renderer/features/backup/BackupSection';
 import { WelcomeSection } from '@renderer/features/welcome/WelcomeSection';
 import { AppearanceColors } from './AppearanceColors';
 import { AttachmentsSection } from './AttachmentsSection';
@@ -45,9 +47,11 @@ export function SettingsView() {
         <div className="space-y-6">
           <ClaudeStatusPanel />
           <GlobalInstructions />
+          <ExtensionsSection />
           <Appearance />
           <WelcomeSection />
           <DataFolders />
+          <BackupSection />
           <AttachmentsSection />
           <ThresholdsSection />
           <Privacy />

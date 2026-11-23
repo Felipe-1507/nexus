@@ -143,6 +143,19 @@ export class KnowledgeService {
     return (await this.index(workspaceId)).graph();
   }
 
+  /** Título e texto de cada nota, uma por vez (para a busca no conteúdo; notas ilegíveis são puladas). */
+  async *notesText(workspaceId: string): AsyncGenerator<{ path: string; title: string; text: string }> {
+    const vault = this.entry(workspaceId).vault;
+    for (const note of vault.listNotes()) {
+      try {
+        const title = note.path.split('/').pop()!.replace(/\.md$/i, '');
+        yield { path: note.path, title, text: await vault.readListed(note.path) };
+      } catch {
+        /* a nota sumiu ou não abriu: segue */
+      }
+    }
+  }
+
   /** O que vai ao prompt do Claude: onde ficam as notas e o índice curto. */
   async promptSection(workspaceId: string): Promise<KnowledgePrompt> {
     const { lines, omitted } = (await this.index(workspaceId)).promptLines();

@@ -38,7 +38,7 @@ export function TitleBar({ sidebarVisible, rightVisible }: { sidebarVisible: boo
         )}
       </span>
       <div className="ml-auto flex items-center gap-1">
-        <IconButton label="Buscar nas conversas (Ctrl+Shift+F)" disabled={!active} onClick={showSearch}>
+        <IconButton label="Buscar (Ctrl+Shift+F)" disabled={!active} onClick={showSearch}>
           <Search size={16} />
         </IconButton>
         <IconButton label="Alternar painel lateral (Ctrl+Alt+B)" active={rightVisible} onClick={toggleRight}>

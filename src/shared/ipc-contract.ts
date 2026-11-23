@@ -32,6 +32,9 @@ import {
 import { planetOverrideSchema } from './planets';
 import { searchInputSchema, searchResultSchema } from './search';
 import { usageSchema } from './usage';
+import { contentSearchInputSchema, contentSearchResultSchema } from './content-search';
+import { extensionsListSchema, extensionsProbeSchema } from './extensions';
+import { backupPreviewSchema, backupResultSchema } from './backup';
 import { welcomeDueSchema, welcomeRecapSchema, welcomeSettingsSchema } from './welcome';
 import { modelCatalogSchema, modelChoiceSchema, modelOptionSchema } from './models';
 import { DARK_VARIANT_IDS } from './palette';
@@ -136,6 +139,18 @@ export const ipcContract = {
   'galaxy:setQuality': { input: galaxyQualitySchema, output: z.object({ quality: galaxyQualitySchema }) },
   'galaxy:getLook': { input: z.undefined(), output: z.object({ look: galaxyLookSchema }) },
   'galaxy:setLook': { input: galaxyLookSchema, output: z.object({ look: galaxyLookSchema }) },
+  /** Procura no texto das notas ou nos arquivos dos projetos (lê os arquivos na hora, com limites de tempo e tamanho). */
+  'search:content': { input: contentSearchInputSchema, output: contentSearchResultSchema },
+  /** O que está configurado (MCP e plugins) para o Workspace, lendo só arquivos; não abre o Claude Code. */
+  'extensions:list': { input: z.object({ workspaceId: z.uuid() }), output: extensionsListSchema },
+  /** Abre o Claude Code sem mensagem e mede conexão e peso de cada servidor MCP. `projectId: null` = só o que é do usuário. */
+  'extensions:probe': {
+    input: z.object({ workspaceId: z.uuid(), projectId: z.uuid().nullable() }),
+    output: extensionsProbeSchema,
+  },
+  'backup:preview': { input: z.undefined(), output: backupPreviewSchema },
+  /** Pergunta onde salvar e cria o .zip; `null` quando o usuário cancela. */
+  'backup:export': { input: z.undefined(), output: backupResultSchema.nullable() },
   'welcome:settings': { input: z.undefined(), output: welcomeSettingsSchema },
   'welcome:setSettings': { input: welcomeSettingsSchema.partial(), output: welcomeSettingsSchema },
   /** A tela de boas-vindas deve aparecer? `force`: ignora "já viu hoje" e o interruptor. */

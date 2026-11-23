@@ -79,14 +79,14 @@ async function launchSeeded() {
   return { ...second, projectId: project.data.id };
 }
 
-const dialog = (page: Page) => page.getByRole('dialog', { name: 'Buscar nas conversas' });
+const dialog = (page: Page) => page.getByRole('dialog', { name: 'Buscar' });
 const box = (page: Page) => dialog(page).getByRole('searchbox', { name: 'Texto da busca' });
 const results = (page: Page) => dialog(page).getByTestId('search-results');
 
 test('busca geral: acha o que o usuário disse e o que o Claude respondeu, sem acento, e abre a conversa', async () => {
   const { app, page, userData } = await launchSeeded();
   try {
-    await page.getByRole('button', { name: /Buscar nas conversas/ }).click();
+    await page.getByRole('button', { name: /^Buscar \(Ctrl/ }).click();
     await expect(dialog(page)).toBeVisible();
     await expect(dialog(page).getByTestId('search-status')).toHaveText('Digite ao menos 2 letras');
 

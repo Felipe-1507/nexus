@@ -55,6 +55,11 @@ import { contextHandlers } from './ipc/handlers/context';
 import { knowledgeHandlers } from './ipc/handlers/knowledge';
 import { permissionHandlers } from './ipc/handlers/permissions';
 import { projectHandlers } from './ipc/handlers/projects';
+import { contentSearchHandlers } from './ipc/handlers/content-search';
+import { extensionsHandlers } from './ipc/handlers/extensions';
+import { probeExtensions, type CreateProbeQuery } from './agent/extensions-probe';
+import { backupHandlers } from './ipc/handlers/backup';
+import { BackupService } from './core/backup/backup-service';
 import { welcomeHandlers } from './ipc/handlers/welcome';
 import { workspaceHandlers } from './ipc/handlers/workspaces';
 import { registerIpc } from './ipc/register';
@@ -430,6 +435,66 @@ function bootstrap(): void {
           }
           return openSetupConsole('o login do Claude Code', loginCommand(status.cli.path));
         },
+        ...contentSearchHandlers({
+          notes: (workspaceId) => notes.notesText(workspaceId),
+          projects: async (workspaceId, projectId) =>
+            (await projects.list(workspaceId))
+              .filter((p) => p.status === 'ok' && (!projectId || p.id === projectId))
+              .map(({ id, name, path: dir }) => ({ id, name, path: dir })),
+        }),
+        ...extensionsHandlers({
+          home: os.homedir(),
+          projects: async (workspaceId) =>
+            (await projects.list(workspaceId)).map(({ id, name, path: dir }) => ({ id, name, path: dir })),
+          probe: async (workspaceId, projectId) => {
+            const status = await claude.get();
+            if (status.cli.state !== 'found' || !status.ready) {
+              throw new NexusError('VALIDATION', 'O Claude Code não está disponível para verificar os servidores.');
+            }
+            let cwd = paths.userData;
+            let scope = 'Configurações do usuário';
+            let settingSources: Array<'user' | 'project' | 'local'> = ['user'];
+            if (projectId) {
+              // Só carrega o que o projeto traz se o usuário já confiou nessas configurações (ADR 0003).
+              const session = await projects.sessionSettings(projectId);
+              if (session.project.workspaceId !== workspaceId)
+                throw new NexusError('NOT_FOUND', 'Projeto não encontrado.');
+              cwd = session.project.path;
+              scope = `Projeto ${session.project.name}`;
+              settingSources = session.settingSources;
+            }
+            return probeExtensions({
+              createQuery: ((args: unknown) =>
+                query(args as Parameters<typeof query>[0])) as unknown as CreateProbeQuery,
+              env: process.env,
+              cliPath: status.cli.path,
+              cwd,
+              settingSources,
+              scope,
+            });
+          },
+        }),
+        ...backupHandlers(
+          new BackupService({
+            db: db.db,
+            userData: paths.userData,
+            dataRoot: paths.dataRoot,
+            appName: BRAND.productName,
+            appVersion: app.getVersion(),
+          }),
+          async (suggestedName) => {
+            // Testes E2E não abrem diálogos: o destino vem da variável. Nunca vale para o app instalado.
+            if (!app.isPackaged && process.env.NEXUS_BACKUP_TARGET) return process.env.NEXUS_BACKUP_TARGET;
+            const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+            const options = {
+              title: 'Salvar backup',
+              defaultPath: path.join(app.getPath('documents'), suggestedName),
+              filters: [{ name: 'Backup (.zip)', extensions: ['zip'] }],
+            };
+            const r = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+            return r.canceled || !r.filePath ? null : r.filePath;
+          },
+        ),
         // Nunca vale para o app instalado.
         ...welcomeHandlers(welcome, !app.isPackaged && process.env.NEXUS_NO_WELCOME === '1'),
         ...chatHandlers(chat, attachments, attachmentMaintenance),

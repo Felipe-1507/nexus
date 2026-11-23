@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react';
-import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { SearchHit } from '@shared/search';
 import type { Workspace } from '@shared/workspace';
 import { Dialog } from '@renderer/components/ui/Dialog';
@@ -8,6 +8,7 @@ import { useProjects } from '@renderer/features/projects/queries';
 import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { cn } from '@renderer/lib/cn';
 import { formatFullTime, formatMessageTime } from '@renderer/lib/format-time';
+import { ContentResults } from './ContentResults';
 import { Highlighted } from './Highlighted';
 import { openSearchHit, useConversationSearch } from './queries';
 import { useSearch } from './search-store';
@@ -22,8 +23,8 @@ export function SearchHost() {
       open={open && Boolean(workspace)}
       onClose={hide}
       size="wide"
-      title="Buscar nas conversas"
-      description="Procura no que você escreveu e no que o Claude respondeu. Só lê as conversas guardadas no Nexus."
+      title="Buscar"
+      description="Procura nas conversas (o que você escreveu e o que o Claude respondeu), no texto das notas e nos arquivos dos projetos."
     >
       {workspace && <SearchPanel workspace={workspace} onClose={hide} />}
     </Dialog>
@@ -38,9 +39,16 @@ function SearchPanel({ workspace, onClose }: { workspace: Workspace; onClose: ()
   // Dentro de um projeto, a busca começa nele; "Todo o Workspace" amplia.
   const [where, setWhere] = useState<'project' | 'all'>(project ? 'project' : 'all');
   const [text, setText] = useState('');
+  const [tab, setTab] = useState<Tab>('chats');
+  const [contentStatus, setContentStatus] = useState('');
+  const onContentStatus = useCallback((s: string) => setContentStatus(s), []);
   const projectId = where === 'project' && project ? project.id : undefined;
   const root = useRef<HTMLDivElement>(null);
-  const { ready, pending, error, hits, truncated } = useConversationSearch(workspace.id, text, projectId);
+  const { ready, pending, error, hits, truncated } = useConversationSearch(
+    workspace.id,
+    tab === 'chats' ? text : '',
+    projectId,
+  );
   const groups = useMemo(() => groupByConversation(hits), [hits]);
 
   function openHit(hit: SearchHit) {
@@ -59,8 +67,8 @@ function SearchPanel({ workspace, onClose }: { workspace: Workspace; onClose: ()
     } else if (e.key === 'ArrowUp') {
       if (at > 0) items[at - 1]!.focus();
       else if (at === 0) input?.focus();
-    } else if (e.key === 'Enter' && document.activeElement === input && hits[0]) {
-      openHit(hits[0]);
+    } else if (e.key === 'Enter' && document.activeElement === input && items[0]) {
+      items[0].click();
     } else {
       return;
     }
@@ -84,33 +92,66 @@ function SearchPanel({ workspace, onClose }: { workspace: Workspace; onClose: ()
         />
       </div>
 
+      <div className="mt-3 flex gap-1 text-sm" role="tablist" aria-label="O que buscar">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            data-testid={`search-tab-${t.id}`}
+            className={cn(
+              'rounded-lg px-3 py-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-accent',
+              tab === t.id ? 'bg-surface-2 font-medium text-text' : 'text-muted hover:bg-surface-2 hover:text-text',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs" role="group" aria-label="Onde buscar">
         <ScopeChip active={where === 'all'} onClick={() => setWhere('all')}>
-          Todo o Workspace
+          {tab === 'chats' ? 'Todo o Workspace' : tab === 'files' ? 'Todos os projetos' : 'Todas as notas'}
         </ScopeChip>
-        {project && (
+        {project && tab !== 'notes' && (
           <ScopeChip active={where === 'project'} onClick={() => setWhere('project')}>
             Só em {project.name}
           </ScopeChip>
         )}
         <span className="ml-auto text-muted" aria-live="polite" data-testid="search-status">
-          {!ready
-            ? 'Digite ao menos 2 letras'
-            : pending
-              ? 'Procurando…'
-              : hits.length === 0
-                ? 'Nada encontrado'
-                : `${hits.length} ${hits.length === 1 ? 'trecho' : 'trechos'}${truncated ? ' (há mais; refine a busca)' : ''}`}
+          {tab !== 'chats'
+            ? contentStatus
+            : !ready
+              ? 'Digite ao menos 2 letras'
+              : pending
+                ? 'Procurando…'
+                : hits.length === 0
+                  ? 'Nada encontrado'
+                  : `${hits.length} ${hits.length === 1 ? 'trecho' : 'trechos'}${truncated ? ' (há mais; refine a busca)' : ''}`}
         </span>
       </div>
 
-      {error && (
+      {tab !== 'chats' && (
+        <ContentResults
+          key={tab}
+          workspaceId={workspace.id}
+          kind={tab}
+          text={text}
+          projectId={tab === 'files' ? projectId : undefined}
+          onOpen={onClose}
+          onStatus={onContentStatus}
+        />
+      )}
+
+      {tab === 'chats' && error && (
         <p role="alert" className="mt-3 text-sm text-danger">
           {error.message}
         </p>
       )}
 
-      {groups.length > 0 && (
+      {tab === 'chats' && groups.length > 0 && (
         <ul
           className="mt-3 max-h-[min(55vh,28rem)] space-y-3 overflow-y-auto pr-1"
           aria-label="Resultados"
@@ -164,6 +205,13 @@ function SearchPanel({ workspace, onClose }: { workspace: Workspace; onClose: ()
     </div>
   );
 }
+
+type Tab = 'chats' | 'notes' | 'files';
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'chats', label: 'Conversas' },
+  { id: 'notes', label: 'Notas' },
+  { id: 'files', label: 'Arquivos dos projetos' },
+];
 
 function ScopeChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
