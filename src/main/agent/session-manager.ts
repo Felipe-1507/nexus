@@ -58,6 +58,12 @@ export interface TurnHandlers {
  */
 export const READ_ONLY_DISALLOWED_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell'];
 
+/**
+ * Fora em qualquer modo: o alarme que o Claude agenda para si mesmo (`ScheduleWakeup`) toca mesmo depois de a tarefa
+ * estar resolvida e gera respostas vazias ("já foi atendido") que reenviam o contexto inteiro e gastam tokens à toa.
+ */
+export const ALWAYS_DISALLOWED_TOOLS = ['ScheduleWakeup'];
+
 const DEFAULT_IDLE_MS = 10 * 60_000;
 /** Com tarefas em segundo plano rodando, o processo continua aberto (para o Claude avisar quando terminarem), até este limite. */
 const BACKGROUND_KEEP_ALIVE_MS = 2 * 60 * 60_000;
@@ -235,7 +241,10 @@ export class SessionManager {
         // Auto: o classificador do Claude Code decide e só pergunta (canUseTool) quando não consegue.
         // Nunca bypassPermissions (ADR 0004).
         permissionMode: config.mode === 'auto' ? 'auto' : 'default',
-        disallowedTools: config.mode === 'read_only' ? READ_ONLY_DISALLOWED_TOOLS : undefined,
+        disallowedTools:
+          config.mode === 'read_only'
+            ? [...READ_ONLY_DISALLOWED_TOOLS, ...ALWAYS_DISALLOWED_TOOLS]
+            : ALWAYS_DISALLOWED_TOOLS,
         canUseTool: config.canUseTool,
         // Base do "Desfazer" (rewindFiles).
         enableFileCheckpointing: true,

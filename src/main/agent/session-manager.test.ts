@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TurnOutcome } from './turn-accumulator';
 import {
   INTERRUPT_GRACE_MS,
+  ALWAYS_DISALLOWED_TOOLS,
   READ_ONLY_DISALLOWED_TOOLS,
   SessionManager,
   type AgentQuery,
@@ -347,8 +348,10 @@ describe('SessionManager', () => {
     const options = fake.calls[0]!;
     expect(options.env).toEqual({ PATH: 'p' });
     expect(options.permissionMode).toBe('default');
-    expect(options.disallowedTools).toEqual(READ_ONLY_DISALLOWED_TOOLS);
-    expect(options.disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'Bash', 'PowerShell']));
+    expect(options.disallowedTools).toEqual([...READ_ONLY_DISALLOWED_TOOLS, ...ALWAYS_DISALLOWED_TOOLS]);
+    expect(options.disallowedTools).toEqual(
+      expect.arrayContaining(['Write', 'Edit', 'Bash', 'PowerShell', 'ScheduleWakeup']),
+    );
     expect(options).not.toHaveProperty('tools');
     expect(options.extraArgs).toEqual({ 'system-prompt-snapshot': 'off' });
     expect(options.enableFileCheckpointing).toBe(true);
@@ -372,10 +375,10 @@ describe('SessionManager', () => {
     const fake = fakeClaude(echo);
     const manager = new SessionManager({ createQuery: fake.createQuery, env: {} });
     await turn(manager, 'c1', 'a', { ...config, mode: 'auto' }).done;
-    expect(fake.calls[0]).toMatchObject({ permissionMode: 'auto', disallowedTools: undefined });
+    expect(fake.calls[0]).toMatchObject({ permissionMode: 'auto', disallowedTools: ['ScheduleWakeup'] });
     await turn(manager, 'c1', 'b', { ...config, mode: 'ask' }).done;
     expect(fake.calls).toHaveLength(2);
-    expect(fake.calls[1]).toMatchObject({ permissionMode: 'default', disallowedTools: undefined });
+    expect(fake.calls[1]).toMatchObject({ permissionMode: 'default', disallowedTools: ['ScheduleWakeup'] });
     for (const o of fake.calls) expect(o.permissionMode).not.toBe('bypassPermissions');
     manager.closeAll();
   });
