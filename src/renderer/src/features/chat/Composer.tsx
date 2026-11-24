@@ -16,6 +16,8 @@ interface ComposerProps {
   workspaceId?: string | null;
   /** "Editar" numa mensagem antiga: devolve o texto e os anexos ao campo. */
   prefill?: { text: string; attachments: Attachment[]; nonce: number };
+  /** Chamado depois que o campo usou o `prefill`, para quem o guarda descartá-lo. */
+  onPrefillUsed?: () => void;
   /** Identifica a conversa: o texto ainda não enviado fica guardado por chave (sobrevive a trocar de conversa e a recarregar). */
   draftKey?: string;
   onStop: () => void;
@@ -34,6 +36,7 @@ export function Composer({
   footer,
   workspaceId,
   prefill,
+  onPrefillUsed,
   draftKey,
 }: ComposerProps) {
   const initial = useState(() => readDraft(draftKey))[0];
@@ -75,6 +78,7 @@ export function Composer({
     setAttachments(prefill.attachments.map((a) => ({ ...a })));
     setAttachError(null);
     ref.current?.focus();
+    onPrefillUsed?.();
   }, [prefill?.nonce]);
   const [sending, setSending] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);

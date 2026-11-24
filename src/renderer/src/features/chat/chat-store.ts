@@ -33,6 +33,8 @@ interface ChatState {
   /** Texto e anexos que "Editar" devolve ao campo de mensagem (o `nonce` faz repetir a mesma edição funcionar). */
   prefill: Record<string, { text: string; attachments: Attachment[]; nonce: number }>;
   setPrefill: (conversationId: string, value: { text: string; attachments: Attachment[] }) => void;
+  /** Descarta o texto de "Editar" depois que o campo o usou (senão ele voltaria sempre que a conversa reabrisse). */
+  clearPrefill: (conversationId: string) => void;
   /** Mensagens esperando a vez, por conversa, e o último erro ao iniciar uma delas. */
   queue: Record<string, QueuedMessage[]>;
   queueError: Record<string, string>;
@@ -63,6 +65,12 @@ export const useChat = create<ChatState>()((set) => ({
     set((s) => ({
       prefill: { ...s.prefill, [conversationId]: { ...value, nonce: (s.prefill[conversationId]?.nonce ?? 0) + 1 } },
     })),
+  clearPrefill: (conversationId) =>
+    set((s) => {
+      if (!(conversationId in s.prefill)) return s;
+      const { [conversationId]: _used, ...prefill } = s.prefill;
+      return { prefill };
+    }),
   select: (workspaceId, conversationId) =>
     set((s) => {
       const { [conversationId ?? '']: _read, ...unread } = s.unread;

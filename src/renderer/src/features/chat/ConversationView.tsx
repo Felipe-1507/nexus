@@ -259,6 +259,7 @@ export function ConversationView({ workspace, conversationId, claudeReady }: Con
             running={Boolean(live)}
             workspaceId={workspace.id}
             prefill={prefill}
+            onPrefillUsed={() => conversationId && useChat.getState().clearPrefill(conversationId)}
             draftKey={conversationId ?? `new:${workspace.id}:${scope ?? ''}`}
             onSend={onSend}
             onStop={() => conversationId && interrupt.mutate(conversationId)}

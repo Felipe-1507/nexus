@@ -4,7 +4,7 @@ import { useChat } from './chat-store';
 
 const ids = { conversationId: 'c1', assistantMessageId: 'a1' };
 
-beforeEach(() => useChat.setState({ selected: {}, scope: {}, live: {}, pending: {}, unread: {} }));
+beforeEach(() => useChat.setState({ selected: {}, scope: {}, live: {}, pending: {}, unread: {}, prefill: {} }));
 
 const request = (id: string, conversationId = 'c1') => ({
   id,
@@ -27,6 +27,19 @@ describe('pedidos de aprovação', () => {
   it('são recompostos a partir da lista do main', () => {
     useChat.getState().loadPending([request('r1', 'c1'), request('r2', 'c2')]);
     expect(Object.keys(useChat.getState().pending)).toEqual(['c1', 'c2']);
+  });
+});
+
+describe('"Editar" mensagem (prefill)', () => {
+  it('some depois de usado e uma nova edição volta a valer', () => {
+    const { setPrefill, clearPrefill } = useChat.getState();
+    setPrefill('c1', { text: 'primeira', attachments: [] });
+    expect(useChat.getState().prefill.c1).toMatchObject({ text: 'primeira', nonce: 1 });
+    clearPrefill('c1');
+    expect(useChat.getState().prefill.c1).toBeUndefined();
+    clearPrefill('c1'); // repetir não quebra
+    setPrefill('c1', { text: 'segunda', attachments: [] });
+    expect(useChat.getState().prefill.c1).toMatchObject({ text: 'segunda', nonce: 1 });
   });
 });
 
