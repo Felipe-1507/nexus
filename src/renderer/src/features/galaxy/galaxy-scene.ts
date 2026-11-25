@@ -132,6 +132,10 @@ export class GalaxyScene {
   private readonly planetBoost = { uMinPx: { value: 0 }, uPxScale: { value: 1 } };
   private shadowRadius = 0;
   private readonly lensCenter = new Vector3();
+  private readonly lensAxis = new Vector3();
+  private readonly lensAxis2 = new Vector3();
+  private readonly lensP = new Vector3();
+  private readonly lensP2 = new Vector3();
   private planets: InstancedMesh | null = null;
   private systemLabels: Array<{ el: HTMLDivElement; pos: Vector3; extent: number }> = [];
   private selected: number | null = null;
@@ -1181,11 +1185,26 @@ export class GalaxyScene {
 
   /** Posição e tamanho da sombra do buraco negro na tela, para a lente nas estrelas (só no estilo Eclipse). */
   private updateLens(): void {
+    // Contorno da sombra na tela: projeta as quatro pontas (direita, esquerda, cima, baixo vistas pela câmera). Fora do
+    // centro da tela, a perspectiva desloca e alarga a esfera; projetar só o centro deixava a lente fora do lugar.
+    const R = this.shadowRadius;
     const center = this.lensCenter.set(0, 0, 0).project(this.camera);
-    const dist = Math.max(this.camera.position.length(), 0.01);
-    const behind = center.z > 1 || this.shadowRadius === 0;
-    const radius = behind ? 0 : this.shadowRadius / (dist * Math.tan((this.camera.fov * Math.PI) / 360));
-    this.lens.uLens.value.set(center.x, center.y, radius, this.camera.aspect);
+    if (R === 0 || center.z > 1) {
+      this.lens.uLens.value.set(center.x, center.y, 0, this.camera.aspect);
+    } else {
+      const e = this.camera.matrixWorld.elements;
+      const right = this.lensAxis.set(e[0]!, e[1]!, e[2]!).normalize().multiplyScalar(R);
+      const up = this.lensAxis2.set(e[4]!, e[5]!, e[6]!).normalize().multiplyScalar(R);
+      const pr = this.lensP.copy(right).project(this.camera);
+      const pl = this.lensP2.copy(right).negate().project(this.camera);
+      const cx = (pr.x + pl.x) / 2;
+      const rx = (Math.abs(pr.x - pl.x) / 2) * this.camera.aspect;
+      const pu = this.lensP.copy(up).project(this.camera);
+      const pd = this.lensP2.copy(up).negate().project(this.camera);
+      const cy = (pu.y + pd.y) / 2;
+      const ry = Math.abs(pu.y - pd.y) / 2;
+      this.lens.uLens.value.set(cx, cy, (rx + ry) / 2, this.camera.aspect);
+    }
     // Alta/Ultra: a lente vai para a tela inteira (pós-processamento); a dos pontos de estrela desliga para não dobrar duas vezes.
     this.post?.setLens(true, this.lens.uLens.value);
     this.lens.uLensOn.value = this.post ? 0 : 1;
