@@ -34,7 +34,7 @@ import { cn } from '@renderer/lib/cn';
 import { invoke } from '@renderer/lib/ipc';
 import { GalaxyScene } from './galaxy-scene';
 import { layoutGalaxy, matchNotes, noteInVault, searchNotes } from './layout';
-import { DEFAULT_GALAXY_QUALITY, GALAXY_PROFILES } from './quality';
+import { AUTO_STEPS, DEFAULT_GALAXY_QUALITY, GALAXY_PROFILES } from './quality';
 import { useGalaxyLook, useGalaxyQuality } from '@renderer/features/settings/queries';
 import { PlanetEditor } from './PlanetEditor';
 import { MOON_COLORS, MOON_LABELS, moonKind, moonName } from './moon-effects';
@@ -122,7 +122,13 @@ function Galaxy({
     [graph.data],
   );
   current.current = graph.data ?? null;
-  const profile = GALAXY_PROFILES[useGalaxyQuality().data?.quality ?? DEFAULT_GALAXY_QUALITY];
+  const chosen = useGalaxyQuality().data?.quality ?? DEFAULT_GALAXY_QUALITY;
+  // Automático: nível atual desta sessão (começa no Ultra e desce quando a cena avisa que ficou lenta).
+  const [autoStep, setAutoStep] = useState(0);
+  const level = chosen === 'auto' ? AUTO_STEPS[autoStep]! : chosen;
+  const profile = GALAXY_PROFILES[level];
+  const chosenRef = useRef(chosen);
+  chosenRef.current = chosen;
   const profileRef = useRef(profile);
   profileRef.current = profile;
   const look = useGalaxyLook().data?.look ?? 'atual';
@@ -148,7 +154,15 @@ function Galaxy({
           },
           onTour: setTour,
         },
-        { reducedMotion, openOnClick: !panel, profile: profileRef.current, look: lookRef.current },
+        {
+          reducedMotion,
+          openOnClick: !panel,
+          profile: profileRef.current,
+          look: lookRef.current,
+          onSlow: () => {
+            if (chosenRef.current === 'auto') setAutoStep((s) => Math.min(s + 1, AUTO_STEPS.length - 1));
+          },
+        },
       );
       scene.current.setSun(sunRef.current.name, sunRef.current.color);
     } catch (err) {

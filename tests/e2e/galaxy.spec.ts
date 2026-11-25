@@ -170,6 +170,10 @@ test('modos Leve e Original: troca nas Configurações vale na hora, sem mexer n
       await expect(canvas).toHaveAttribute('data-post', 'on');
       await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
     }
+    // Automático: começa no Ultra (e só desce se a máquina ficar lenta).
+    await modes.getByRole('radio', { name: /^Automático/ }).click();
+    await expect(canvas).toHaveAttribute('data-quality', /^(ultra|alta|original|leve)$/);
+    await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
     await modes.getByRole('radio', { name: /Original/ }).click();
     await expect(canvas).toHaveAttribute('data-post', 'off');
 

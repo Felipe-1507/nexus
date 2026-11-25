@@ -46,6 +46,7 @@ import type { GalaxyProfile } from './quality';
 import { PostFx } from './post-fx';
 import { planTour, TOUR_DWELL_MS, TOUR_FLY_MS, type TourStop } from './explore';
 import { createMoons, MOON_LABELS, moonKind, moonName, moonPosition, planMoons, type MoonPlan } from './moon-effects';
+import { createSystemStarMaterial } from './system-star';
 import { createPlanetMaterial, createRingMaterial, kindIndex, RING_INNER, RING_OUTER } from './planet-material';
 
 export interface GalaxyCallbacks {
@@ -61,6 +62,12 @@ export interface GalaxyCallbacks {
 
 const BACKGROUND = 0x05050b;
 const ROUTE_OPACITY = 0.16;
+/** Alta/Ultra: segmentos de cada arco entre sistemas e quanto as rotas apagam fora da seleção. */
+const ROUTE_ARC_SEGMENTS = 12;
+const ROUTE_DETAIL_DIM = 0.4;
+/** Modo Automático: abaixo deste ritmo, medido por esta janela, a qualidade desce um nível. */
+const SLOW_FPS = 20;
+const SLOW_WINDOW_MS = 3000;
 const FLY_MS = 900;
 /** Velocidade do giro automático: o normal, o do modo contemplativo e o das paradas do tour. */
 const SPIN_SPEED = 0.25;
@@ -178,6 +185,8 @@ export class GalaxyScene {
   private search: Set<number> | null = null;
   private planetHalo: { halo: ReturnType<typeof haloBuffer>; alphas: Float32Array; sizes: Float32Array } | null = null;
   private routeColors: { attribute: BufferAttribute; base: Float32Array } | null = null;
+  /** Números (x, y, z de cada ponta) por ligação: 6 com reta, mais com arco. */
+  private routeFloats = 6;
   /** Giro automático da câmera (para quando o usuário mexe nela). É movimento ambiente: segue o limite do perfil. */
   private autoRotate: boolean;
   /** Animações ambientes das próximas etapas (naves, cometas, pulsos). */
@@ -188,6 +197,11 @@ export class GalaxyScene {
   private settleUntil = 0;
   /** Quadros desenhados (exposto de tempos em tempos para os testes medirem o consumo). */
   private rendered = 0;
+  /** Modo Automático: medição do ritmo e se já avisou da lentidão neste perfil. */
+  private lastLoop = 0;
+  private drewLast = false;
+  private speed = { total: 0, frames: 0 };
+  private slowReported = false;
   private lastStats = 0;
 
   constructor(
@@ -197,6 +211,8 @@ export class GalaxyScene {
       reducedMotion: boolean;
       /** Clique num planeta abre a nota (tela cheia). No painel, o clique só seleciona e leva a câmera até ele. */
       openOnClick: boolean;
+      /** Modo Automático: chamado uma vez por perfil quando os quadros ficam lentos demais. */
+      onSlow?: () => void;
       /** Modo Leve ou Original (quality.ts). Pode ser trocado depois com `setProfile`. */
       profile: GalaxyProfile;
       /** Estilo: o sol de sempre ou o núcleo Eclipse. Pode ser trocado depois com `setLook`. */
@@ -306,6 +322,8 @@ export class GalaxyScene {
   setProfile(profile: GalaxyProfile): void {
     if (profile.quality === this.profile.quality) return;
     this.profile = profile;
+    this.slowReported = false;
+    this.speed = { total: 0, frames: 0 };
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
     this.rim.value = profile.rim;
     this.rebuildStars();
@@ -592,7 +610,8 @@ export class GalaxyScene {
       this.graph.links.forEach(([a, b], r) => {
         const both = found !== null && found.has(a) && found.has(b);
         const k = found === null ? 1 : both ? 2.5 : 0.12;
-        for (let j = 0; j < 6; j++) out[r * 6 + j] = base[r * 6 + j]! * k;
+        const f = this.routeFloats;
+        for (let j = 0; j < f; j++) out[r * f + j] = base[r * f + j]! * k;
       });
       attribute.needsUpdate = true;
     }
@@ -820,9 +839,12 @@ export class GalaxyScene {
     // O núcleo não tem estrela própria: a dele é o sol.
     const systems = this.layout.systems.filter((s) => !s.core);
     const sun = this.layout.sun.radius;
+    const detailed = this.profile.planetDetail > 0;
     const star = new InstancedMesh(
-      new SphereGeometry(1, 20, 14),
-      new MeshBasicMaterial({ color: 0xffffff }),
+      detailed ? new SphereGeometry(1, 48, 32) : new SphereGeometry(1, 20, 14),
+      // Alta/Ultra: superfície granulada que se mexe e borda mais escura (como um sol); fica abaixo do limiar do
+      // bloom no meio, então não vira uma bola branca chapada.
+      detailed ? createSystemStarMaterial(this.time) : new MeshBasicMaterial({ color: 0xffffff }),
       Math.max(1, systems.length),
     );
     star.count = systems.length;
@@ -833,8 +855,8 @@ export class GalaxyScene {
       const r = 1.3 + 0.15 * Math.sqrt(s.count);
       m.makeScale(r, r, r).setPosition(s.x, s.y, s.z);
       star.setMatrixAt(i, m);
-      star.setColorAt(i, color.set(s.color).lerp(new Color(0xffffff), 0.55));
-      halo.set(i, s, color.set(s.color), r * 12, 0.9);
+      star.setColorAt(i, color.set(s.color).lerp(new Color(0xffffff), detailed ? 0.12 : 0.55));
+      halo.set(i, s, color.set(s.color), r * 12, detailed ? 0.45 : 0.9);
     });
     this.content.add(star, halo.points, this.nebula());
 
@@ -986,19 +1008,59 @@ export class GalaxyScene {
 
   private buildRoutes(): void {
     const { links } = this.graph;
-    const positions = new Float32Array(links.length * 6);
-    const colors = new Float32Array(links.length * 6);
+    // Alta/Ultra: rotas entre sistemas viram arcos (curva de Bézier que sobe e se afasta do centro) e todas ficam mais
+    // discretas; acendem com a seleção e com a busca. Nos outros modos, uma reta por ligação, como sempre.
+    const detailed = this.profile.planetDetail > 0;
+    const seg = detailed ? ROUTE_ARC_SEGMENTS : 1;
+    this.routeFloats = seg * 6;
+    const dim = detailed ? ROUTE_DETAIL_DIM : 1;
+    const positions = new Float32Array(links.length * this.routeFloats);
+    const colors = new Float32Array(links.length * this.routeFloats);
     const c = new Color();
+    const ca = new Color();
+    const cb = new Color();
+    const p = (t: number, a: Vector3, k: Vector3, b: Vector3, out: Vector3) =>
+      out.set(
+        (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * k.x + t * t * b.x,
+        (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * k.y + t * t * b.y,
+        (1 - t) * (1 - t) * a.z + 2 * (1 - t) * t * k.z + t * t * b.z,
+      );
+    const va = new Vector3();
+    const vb = new Vector3();
+    const ctrl = new Vector3();
+    const p0 = new Vector3();
+    const p1 = new Vector3();
     links.forEach(([a, b], i) => {
       const pa = this.layout.notes[a]!;
       const pb = this.layout.notes[b]!;
-      positions.set([pa.x, pa.y, pa.z, pb.x, pb.y, pb.z], i * 6);
       // Conexões importantes brilham mais (a mistura é aditiva: cor mais forte = linha mais clara).
-      const boost = isImportantRoute(this.graph, i) ? 2.2 : 1;
-      c.set(this.layout.systems[pa.system]!.color).multiplyScalar(boost);
-      colors.set([c.r, c.g, c.b], i * 6);
-      c.set(this.layout.systems[pb.system]!.color).multiplyScalar(boost);
-      colors.set([c.r, c.g, c.b], i * 6 + 3);
+      const boost = (isImportantRoute(this.graph, i) ? 2.2 : 1) * dim;
+      ca.set(this.layout.systems[pa.system]!.color).multiplyScalar(boost);
+      cb.set(this.layout.systems[pb.system]!.color).multiplyScalar(boost);
+      va.set(pa.x, pa.y, pa.z);
+      vb.set(pb.x, pb.y, pb.z);
+      const d = va.distanceTo(vb);
+      const bow = seg > 1 && pa.system !== pb.system ? d * 0.28 : 0;
+      ctrl.addVectors(va, vb).multiplyScalar(0.5);
+      const out = ctrl.lengthSq() > 1e-6 ? ctrl.clone().normalize().multiplyScalar(bow * 0.5) : new Vector3();
+      ctrl.add(out).add(new Vector3(0, bow, 0));
+      const base = i * this.routeFloats;
+      for (let s = 0; s < seg; s++) {
+        const t0 = s / seg;
+        const t1 = (s + 1) / seg;
+        if (seg === 1) {
+          p0.copy(va);
+          p1.copy(vb);
+        } else {
+          p(t0, va, ctrl, vb, p0);
+          p(t1, va, ctrl, vb, p1);
+        }
+        positions.set([p0.x, p0.y, p0.z, p1.x, p1.y, p1.z], base + s * 6);
+        c.copy(ca).lerp(cb, t0);
+        colors.set([c.r, c.g, c.b], base + s * 6);
+        c.copy(ca).lerp(cb, t1);
+        colors.set([c.r, c.g, c.b], base + s * 6 + 3);
+      }
     });
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(positions, 3));
@@ -1236,9 +1298,39 @@ export class GalaxyScene {
   /** Última posição do ponteiro já examinada (o raycast só roda quando ela muda ou a câmera se mexe). */
   private lastPick = '';
 
+  /** Mede o ritmo real dos quadros enquanto a cena desenha sem parar; abaixo de ~20 FPS por 3 s, avisa (modo Automático). */
+  private watchSpeed(now: number, drew: boolean): void {
+    const onSlow = this.options.onSlow;
+    if (!onSlow || this.slowReported) return;
+    const gap = now - this.lastLoop;
+    this.lastLoop = now;
+    if (!drew || !this.drewLast || gap > 500) {
+      this.drewLast = drew;
+      return;
+    }
+    this.speed.total += gap;
+    this.speed.frames++;
+    if (this.speed.total < SLOW_WINDOW_MS) return;
+    const avg = this.speed.total / this.speed.frames;
+    this.speed = { total: 0, frames: 0 };
+    if (avg > 1000 / SLOW_FPS) {
+      this.slowReported = true;
+      onSlow();
+    }
+  }
+
   private loop = () => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.loop);
+    const drewBefore = this.rendered;
+    try {
+      this.step();
+    } finally {
+      this.watchSpeed(performance.now(), this.rendered !== drewBefore);
+    }
+  };
+
+  private step(): void {
     // Aba escondida, janela minimizada ou painel fechado: nada a desenhar.
     if (document.hidden || this.container.clientWidth === 0 || this.container.clientHeight === 0) return;
 
@@ -1311,7 +1403,7 @@ export class GalaxyScene {
       this.lastStats = now;
       this.container.dataset.frames = String(this.rendered);
     }
-  };
+  }
 
   private project(v: Vector3): { x: number; y: number; visible: boolean } {
     const p = v.clone().project(this.camera);

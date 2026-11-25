@@ -9,7 +9,7 @@ import type { PostFxSettings } from './post-fx';
  * Os limites de naves, cometas e fluxos já ficam definidos aqui para as próximas etapas respeitarem os dois modos.
  */
 export interface GalaxyProfile {
-  quality: GalaxyQuality;
+  quality: GalaxyLevel;
   /** Teto da densidade de pixels (telas de alta resolução). */
   maxPixelRatio: number;
   /** Quadros por segundo com movimento rápido (giro automático, cometas, estrelas cadentes), com a janela em foco. */
@@ -144,6 +144,12 @@ const ULTRA: GalaxyProfile = {
   limits: { ...BASE.original.limits, ambientShips: 10, comets: 6, pulses: 40 },
 };
 
-export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = { ...BASE, alta: ALTA, ultra: ULTRA };
+/** Níveis concretos (o Automático escolhe um deles na hora). */
+export type GalaxyLevel = Exclude<GalaxyQuality, 'auto'>;
+
+/** Automático: começa no Ultra e desce um nível cada vez que os quadros ficam lentos. */
+export const AUTO_STEPS: GalaxyLevel[] = ['ultra', 'alta', 'original', 'leve'];
+
+export const GALAXY_PROFILES: Record<GalaxyLevel, GalaxyProfile> = { ...BASE, alta: ALTA, ultra: ULTRA };
 
 export const DEFAULT_GALAXY_QUALITY: GalaxyQuality = 'leve';

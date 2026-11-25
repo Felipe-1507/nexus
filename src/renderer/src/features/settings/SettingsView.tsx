@@ -205,6 +205,11 @@ function GalaxyLookPicker() {
 
 const GALAXY_QUALITIES: Array<{ id: GalaxyQuality; label: string; description: string }> = [
   {
+    id: 'auto',
+    label: 'Automático',
+    description: 'Começa no Ultra e desce um nível sozinho se a galáxia ficar lenta neste computador.',
+  },
+  {
     id: 'leve',
     label: 'Leve',
     description:
