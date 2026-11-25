@@ -338,7 +338,8 @@ export class GalaxyScene {
   /** Liga ou desliga o que só existe no estilo Eclipse (lente nas estrelas e tamanho mínimo dos planetas). */
   private syncLook(): void {
     const eclipse = this.look === 'eclipse';
-    this.lens.uLensOn.value = eclipse ? 1 : 0;
+    this.lens.uLensOn.value = eclipse && !this.post ? 1 : 0;
+    if (!eclipse) this.post?.setLens(false, this.lens.uLens.value);
     this.planetBoost.uMinPx.value = eclipse ? PLANET_MIN_PX * this.renderer.getPixelRatio() : 0;
     this.container.dataset.lens = eclipse ? 'on' : 'off';
     this.wake();
@@ -1185,6 +1186,9 @@ export class GalaxyScene {
     const behind = center.z > 1 || this.shadowRadius === 0;
     const radius = behind ? 0 : this.shadowRadius / (dist * Math.tan((this.camera.fov * Math.PI) / 360));
     this.lens.uLens.value.set(center.x, center.y, radius, this.camera.aspect);
+    // Alta/Ultra: a lente vai para a tela inteira (pós-processamento); a dos pontos de estrela desliga para não dobrar duas vezes.
+    this.post?.setLens(true, this.lens.uLens.value);
+    this.lens.uLensOn.value = this.post ? 0 : 1;
   }
 
   private fit(): void {

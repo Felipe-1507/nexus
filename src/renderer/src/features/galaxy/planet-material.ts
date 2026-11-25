@@ -175,7 +175,8 @@ const PLANET_FRAGMENT = /* glsl */ `
     vec3 L = normalize(mix(normalize(vec3(0.45, 0.55, 0.7)), normalize(vL), 0.75));
     float bumpK = kind < 0.5 ? 0.9 : kind < 1.5 ? 0.12 : kind < 2.5 ? 0.5 : kind < 3.5 ? 0.35 : kind < 4.5 ? 0.8 : kind < 5.5 ? 0.45 : 0.25;
     // Relevo calculado na própria esfera (diferenças finitas do ruído), sem depender dos pixels: não serrilha.
-    float k = bumpK * (DETAIL > 1 ? 0.3 : 0.22);
+    // Perto do contorno o relevo some aos poucos: visto de lado ele vira serrilhado.
+    float k = bumpK * (DETAIL > 1 ? 0.3 : 0.22) * smoothstep(0.05, 0.45, dot(normalize(vN), V));
     vec3 t1 = normalize(cross(p, abs(p.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
     vec3 t2 = cross(p, t1);
     float e = 0.03;

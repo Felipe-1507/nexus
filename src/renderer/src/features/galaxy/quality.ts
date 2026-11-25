@@ -118,6 +118,7 @@ const ALTA: GalaxyProfile = {
     vignette: 0.45,
     grain: 0.025,
     chroma: 0,
+    lens: 1.2,
   },
 };
 
@@ -129,7 +130,7 @@ const ULTRA: GalaxyProfile = {
   backgroundStars: 6000,
   nearStars: 3000,
   rim: 1.15,
-  eclipse: { dust: 6000, periphery: 3200, octaves: 4, segments: 192, lensStars: 14000 },
+  eclipse: { dust: 3800, periphery: 2000, octaves: 4, segments: 192, lensStars: 14000 },
   shootingStarEverySec: 8,
   cometEverySec: 7,
   post: {
@@ -138,6 +139,7 @@ const ULTRA: GalaxyProfile = {
     vignette: 0.6,
     grain: 0.035,
     chroma: 0.004,
+    lens: 1.6,
   },
   limits: { ...BASE.original.limits, ambientShips: 10, comets: 6, pulses: 40 },
 };
