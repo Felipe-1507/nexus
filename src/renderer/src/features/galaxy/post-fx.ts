@@ -43,7 +43,9 @@ const FINISH = {
       vec4 base = texture2D(tDiffuse, vUv);
       vec3 col = vec3(texture2D(tDiffuse, vUv + off).r, base.g, texture2D(tDiffuse, vUv - off).b);
       col *= mix(1.0, smoothstep(0.85, 0.15, r2 * 2.2), vignette);
-      col += (rand(vUv * 1000.0 + time) - 0.5) * grain;
+      // Grão só onde há luz: o fundo continua preto de verdade.
+      float lum = dot(col, vec3(0.299, 0.587, 0.114));
+      col += (rand(vUv * 1000.0 + time) - 0.5) * grain * smoothstep(0.02, 0.25, lum);
       gl_FragColor = vec4(col, base.a);
     }
   `,

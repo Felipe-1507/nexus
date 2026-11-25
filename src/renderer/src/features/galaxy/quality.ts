@@ -108,8 +108,8 @@ const ALTA: GalaxyProfile = {
   ...BASE.original,
   quality: 'alta',
   post: {
-    bloom: { strength: 0.75, radius: 0.55, threshold: 0.62 },
-    exposure: 1.05,
+    bloom: { strength: 0.45, radius: 0.4, threshold: 0.85 },
+    exposure: 0.95,
     vignette: 0.45,
     grain: 0.025,
     chroma: 0,
@@ -127,8 +127,8 @@ const ULTRA: GalaxyProfile = {
   shootingStarEverySec: 8,
   cometEverySec: 7,
   post: {
-    bloom: { strength: 1.05, radius: 0.7, threshold: 0.5 },
-    exposure: 1.1,
+    bloom: { strength: 0.6, radius: 0.5, threshold: 0.8 },
+    exposure: 0.95,
     vignette: 0.6,
     grain: 0.035,
     chroma: 0.004,

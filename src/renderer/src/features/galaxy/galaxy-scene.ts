@@ -295,6 +295,8 @@ export class GalaxyScene {
     this.post?.dispose();
     this.post = this.profile.post ? new PostFx(this.renderer, this.scene, this.camera, this.profile.post) : null;
     this.container.dataset.post = this.post ? 'on' : 'off';
+    // Alta e Ultra: fundo preto puro (o céu estrelado e a poeira continuam por cima).
+    this.renderer.setClearColor(this.post ? 0x000000 : BACKGROUND);
   }
 
   setProfile(profile: GalaxyProfile): void {
