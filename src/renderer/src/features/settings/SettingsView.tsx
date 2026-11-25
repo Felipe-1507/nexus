@@ -215,6 +215,16 @@ const GALAXY_QUALITIES: Array<{ id: GalaxyQuality; label: string; description: s
     label: 'Original',
     description: 'A experiência completa, com todos os efeitos. Gasta mais placa de vídeo.',
   },
+  {
+    id: 'alta',
+    label: 'Alta',
+    description: 'Todos os efeitos com acabamento de cinema: brilho nas luzes, cor mais rica, vinheta e grão leve.',
+  },
+  {
+    id: 'ultra',
+    label: 'Ultra',
+    description: 'Tudo no máximo: mais estrelas e poeira, brilho mais forte e resolução maior. Para placa de vídeo dedicada.',
+  },
 ];
 
 function GalaxyQualityPicker() {
@@ -225,7 +235,7 @@ function GalaxyQualityPicker() {
     <div className="mt-6">
       <p className="text-xs font-medium">Galáxia</p>
       <p className="mt-0.5 text-xs text-muted">
-        Muda só o quanto é desenhado. Posições, cores e planetas personalizados continuam iguais nos dois modos.
+        Muda só o quanto é desenhado. Posições, cores e planetas personalizados continuam iguais em todos os modos.
       </p>
       <div role="radiogroup" aria-label="Modo da galáxia" className="mt-2 grid grid-cols-2 gap-2">
         {GALAXY_QUALITIES.map((q) => (

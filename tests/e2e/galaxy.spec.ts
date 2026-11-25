@@ -161,6 +161,17 @@ test('modos Leve e Original: troca nas Configurações vale na hora, sem mexer n
     await expect(canvas).toHaveAttribute('data-ships', '6');
     await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
     await expect(canvas).toHaveAttribute('data-planets', '2');
+    await expect(canvas).toHaveAttribute('data-post', 'off');
+
+    // Alta e Ultra ligam o pós-processamento sem perder a seleção; voltar ao Original desliga.
+    for (const mode of ['alta', 'ultra'] as const) {
+      await modes.getByRole('radio', { name: new RegExp(mode === 'alta' ? '^Alta' : '^Ultra') }).click();
+      await expect(canvas).toHaveAttribute('data-quality', mode);
+      await expect(canvas).toHaveAttribute('data-post', 'on');
+      await expect(canvas).toHaveAttribute('data-selected', 'Ideias/Roteiro.md');
+    }
+    await modes.getByRole('radio', { name: /Original/ }).click();
+    await expect(canvas).toHaveAttribute('data-post', 'off');
 
     // Fica guardado: depois de recarregar continua no Original; e volta ao Leve sem perder nada.
     await page.reload();

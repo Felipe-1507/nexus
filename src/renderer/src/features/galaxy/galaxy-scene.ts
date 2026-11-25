@@ -43,6 +43,7 @@ import { ActivityLayer, type Spot } from './activity-effects';
 import { createNebulaMaterial, createShootingStars, haloBuffer, seeded, shaderClock, type Effect } from './effects';
 import { AmbientClock, ambientFrameDue, ambientInterval, type Animator } from './ambient';
 import type { GalaxyProfile } from './quality';
+import { PostFx } from './post-fx';
 import { planTour, TOUR_DWELL_MS, TOUR_FLY_MS, type TourStop } from './explore';
 import { createMoons, MOON_LABELS, moonKind, moonName, moonPosition, planMoons, type MoonPlan } from './moon-effects';
 import { createPlanetMaterial, createRingMaterial, kindIndex, RING_INNER, RING_OUTER } from './planet-material';
@@ -106,6 +107,8 @@ const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 
  */
 export class GalaxyScene {
   private readonly renderer: WebGLRenderer;
+  /** Pós-processamento dos modos Alta e Ultra (null nos outros). */
+  private post: PostFx | null = null;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(55, 1, 0.1, 6000);
   private readonly controls: OrbitControls;
@@ -279,6 +282,7 @@ export class GalaxyScene {
     this.resize = new ResizeObserver(() => this.fit());
     this.resize.observe(container);
     this.container.dataset.quality = this.profile.quality;
+    this.applyPost();
     this.fit();
     this.loop();
   }
@@ -286,12 +290,20 @@ export class GalaxyScene {
   /**
    * Troca o modo (Leve ou Original) sem recriar a cena: a câmera, a seleção e a posição dos planetas ficam como estão.
    */
+  /** Liga, troca ou desliga o pós-processamento conforme o perfil atual. */
+  private applyPost(): void {
+    this.post?.dispose();
+    this.post = this.profile.post ? new PostFx(this.renderer, this.scene, this.camera, this.profile.post) : null;
+    this.container.dataset.post = this.post ? 'on' : 'off';
+  }
+
   setProfile(profile: GalaxyProfile): void {
     if (profile.quality === this.profile.quality) return;
     this.profile = profile;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
     this.rim.value = profile.rim;
     this.rebuildStars();
+    this.applyPost();
     if (this.graph.notes.length > 0) this.setData(this.graph, this.layout, this.styles);
     this.container.dataset.quality = profile.quality;
     this.fit();
@@ -623,6 +635,7 @@ export class GalaxyScene {
       for (const m of materials) m.dispose();
     });
     this.haloMaterial.dispose();
+    this.post?.dispose();
     this.renderer.dispose();
     canvas.remove();
     this.labels.remove();
@@ -1169,6 +1182,7 @@ export class GalaxyScene {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (w === 0 || h === 0) return;
     this.renderer.setSize(w, h, false);
+    this.post?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.wake();
@@ -1255,7 +1269,8 @@ export class GalaxyScene {
     }
     this.updateLabels();
     if (this.look === 'eclipse') this.updateLens();
-    this.renderer.render(this.scene, this.camera);
+    if (this.post) this.post.render(now);
+    else this.renderer.render(this.scene, this.camera);
     this.rendered++;
     if (now - this.lastStats >= 1000) {
       this.lastStats = now;

@@ -102,7 +102,7 @@ export const appearanceSchema = z.object({
 export type PreferencesView = z.infer<typeof preferencesViewSchema>;
 
 /** Modo de visualização da galáxia: Leve (dia a dia, econômico) ou Original (a experiência completa, de referência). */
-export const galaxyQualitySchema = z.enum(['leve', 'original']);
+export const galaxyQualitySchema = z.enum(['leve', 'original', 'alta', 'ultra']);
 export type GalaxyQuality = z.infer<typeof galaxyQualitySchema>;
 /** Estilo da galáxia (separado da qualidade): `atual` ou `eclipse`. */
 export const galaxyLookSchema = z.enum(['atual', 'eclipse']);

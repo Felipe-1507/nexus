@@ -1,4 +1,5 @@
 import type { GalaxyQuality } from '@shared/ipc-contract';
+import type { PostFxSettings } from './post-fx';
 
 /**
  * Perfis de qualidade da galáxia. O Modo Original é a referência (a galáxia como era antes dos perfis); o Leve gasta
@@ -32,6 +33,8 @@ export interface GalaxyProfile {
   cometEverySec: number;
   /** Núcleo Eclipse (estilo "Eclipse"): grãos de poeira, camadas de ruído do disco e segmentos do anel. */
   eclipse: { dust: number; periphery: number; octaves: number; segments: number; lensStars: number };
+  /** Pós-processamento (bloom, cor de cinema, vinheta, grão). null = desenho direto. */
+  post: PostFxSettings | null;
   /** Limites para os efeitos das próximas etapas (G2 em diante). */
   limits: {
     ambientShips: number;
@@ -47,7 +50,7 @@ export interface GalaxyProfile {
   };
 }
 
-export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
+const BASE: Record<'original' | 'leve', GalaxyProfile> = {
   original: {
     quality: 'original',
     maxPixelRatio: 2,
@@ -59,6 +62,7 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     sunLayers: 3,
     nearStars: 1400,
     rim: 1,
+    post: null,
     eclipse: { dust: 2600, periphery: 1400, octaves: 3, segments: 128, lensStars: 7000 },
     shootingStarEverySec: 12,
     cometEverySec: 9,
@@ -83,6 +87,7 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     sunLayers: 2,
     nearStars: 450,
     rim: 0.6,
+    post: null,
     eclipse: { dust: 700, periphery: 320, octaves: 2, segments: 64, lensStars: 2200 },
     shootingStarEverySec: 30,
     cometEverySec: 22,
@@ -97,5 +102,40 @@ export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = {
     },
   },
 };
+
+/** Alta: a experiência Original com acabamento de cinema. Ultra: tudo no máximo, para placa de vídeo dedicada. */
+const ALTA: GalaxyProfile = {
+  ...BASE.original,
+  quality: 'alta',
+  post: {
+    bloom: { strength: 0.75, radius: 0.55, threshold: 0.62 },
+    exposure: 1.05,
+    vignette: 0.45,
+    grain: 0.025,
+    chroma: 0,
+  },
+};
+
+const ULTRA: GalaxyProfile = {
+  ...BASE.original,
+  quality: 'ultra',
+  maxPixelRatio: 2.5,
+  backgroundStars: 6000,
+  nearStars: 3000,
+  rim: 1.15,
+  eclipse: { dust: 6000, periphery: 3200, octaves: 4, segments: 192, lensStars: 14000 },
+  shootingStarEverySec: 8,
+  cometEverySec: 7,
+  post: {
+    bloom: { strength: 1.05, radius: 0.7, threshold: 0.5 },
+    exposure: 1.1,
+    vignette: 0.6,
+    grain: 0.035,
+    chroma: 0.004,
+  },
+  limits: { ...BASE.original.limits, ambientShips: 10, comets: 6, pulses: 40 },
+};
+
+export const GALAXY_PROFILES: Record<GalaxyQuality, GalaxyProfile> = { ...BASE, alta: ALTA, ultra: ULTRA };
 
 export const DEFAULT_GALAXY_QUALITY: GalaxyQuality = 'leve';
