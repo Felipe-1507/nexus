@@ -111,6 +111,7 @@ const BASE: Record<'original' | 'leve', GalaxyProfile> = {
 const ALTA: GalaxyProfile = {
   ...BASE.original,
   quality: 'alta',
+  limits: { ...BASE.original.limits, ambientShips: 4 },
   planetDetail: 1,
   post: {
     bloom: { strength: 0.45, radius: 0.4, threshold: 0.85 },
@@ -141,7 +142,7 @@ const ULTRA: GalaxyProfile = {
     chroma: 0.004,
     lens: 1.6,
   },
-  limits: { ...BASE.original.limits, ambientShips: 10, comets: 6, pulses: 40 },
+  limits: { ...BASE.original.limits, ambientShips: 5, comets: 4, pulses: 40 },
 };
 
 /** Níveis concretos (o Automático escolhe um deles na hora). */

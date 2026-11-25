@@ -1,4 +1,12 @@
-import { ACESFilmicToneMapping, NoToneMapping, Vector2, Vector4, type Camera, type Scene, type WebGLRenderer } from 'three';
+import {
+  ACESFilmicToneMapping,
+  NoToneMapping,
+  Vector2,
+  Vector4,
+  type Camera,
+  type Scene,
+  type WebGLRenderer,
+} from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';

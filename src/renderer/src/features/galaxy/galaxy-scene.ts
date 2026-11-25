@@ -999,10 +999,10 @@ export class GalaxyScene {
 
   /** Anéis: um disco por planeta, inclinado de um jeito próprio, desenhado todo de uma vez. */
   private buildRings(indices: number[], styles: PlanetStyle[]): InstancedMesh {
-    const geometry = new RingGeometry(RING_INNER, RING_OUTER, 64, 1);
+    const geometry = new RingGeometry(RING_INNER, RING_OUTER, this.profile.planetDetail > 0 ? 128 : 64, 1);
     const colorSeed = new Float32Array(indices.length * 4);
     geometry.setAttribute('aRing', new InstancedBufferAttribute(colorSeed, 4));
-    const mesh = new InstancedMesh(geometry, createRingMaterial(), indices.length);
+    const mesh = new InstancedMesh(geometry, createRingMaterial(this.profile.planetDetail), indices.length);
     const m = new Matrix4();
     const q = new Quaternion();
     const c = new Color();
@@ -1060,7 +1060,13 @@ export class GalaxyScene {
       const d = va.distanceTo(vb);
       const bow = seg > 1 && pa.system !== pb.system ? d * 0.28 : 0;
       ctrl.addVectors(va, vb).multiplyScalar(0.5);
-      const out = ctrl.lengthSq() > 1e-6 ? ctrl.clone().normalize().multiplyScalar(bow * 0.5) : new Vector3();
+      const out =
+        ctrl.lengthSq() > 1e-6
+          ? ctrl
+              .clone()
+              .normalize()
+              .multiplyScalar(bow * 0.5)
+          : new Vector3();
       ctrl.add(out).add(new Vector3(0, bow, 0));
       const base = i * this.routeFloats;
       for (let s = 0; s < seg; s++) {

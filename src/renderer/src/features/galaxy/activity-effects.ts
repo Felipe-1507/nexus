@@ -17,6 +17,11 @@ import {
 import type { Animator } from './ambient';
 import { haloBuffer } from './effects';
 import type { GalaxyProfile } from './quality';
+import { Fleet, MODEL_SCALE, type ShipModel } from './ship-models';
+
+/** Naves do Claude (Alta/Ultra): pintura própria, e o modelo cresce com o trabalho (notas na fila). */
+const CLAUDE_LIVERY = { hull: '#e8ecf4', trim: '#d97757', engine: '#8fe9ff' };
+const modelFor = (jobs: number): ShipModel => (jobs >= 4 ? 'cargueiro' : jobs >= 2 ? 'cruzador' : 'correio');
 
 /**
  * Eventos reais na galáxia (Galáxia Viva, G5). Quando o Claude cria ou edita uma nota, uma nave parte da borda da
@@ -94,6 +99,8 @@ interface Pulse {
 export class ActivityLayer {
   readonly objects: Object3D[];
   private readonly hulls: InstancedMesh;
+  private readonly fleets: Record<'correio' | 'cruzador' | 'cargueiro', Fleet>;
+  private clock = 0;
   private readonly glow: ReturnType<typeof haloBuffer>;
   private readonly pulseHalo: ReturnType<typeof haloBuffer>;
   private readonly beamLine: LineSegments;
@@ -127,7 +134,18 @@ export class ActivityLayer {
       new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: AdditiveBlending }),
     );
     this.beamLine.frustumCulled = false;
-    this.objects = [this.hulls, this.beamLine, this.glow.points, this.pulseHalo.points];
+    this.fleets = {
+      correio: new Fleet('correio', CLAUDE_LIVERY, MAX_SHIPS),
+      cruzador: new Fleet('cruzador', CLAUDE_LIVERY, MAX_SHIPS),
+      cargueiro: new Fleet('cargueiro', CLAUDE_LIVERY, MAX_SHIPS),
+    };
+    this.objects = [
+      this.hulls,
+      this.beamLine,
+      this.glow.points,
+      this.pulseHalo.points,
+      ...Object.values(this.fleets).flatMap((f) => f.objects),
+    ];
   }
 
   get activeShips(): number {
@@ -311,13 +329,22 @@ export class ActivityLayer {
       }
 
       // Desenho das naves e dos feixes.
-      this.hulls.count = this.ships.length;
+      const detailed = this.deps.profile().planetDetail > 0;
+      this.clock += dt;
+      this.hulls.count = detailed ? 0 : this.ships.length;
+      const used = { correio: 0, cruzador: 0, cargueiro: 0 };
       g.alphas.fill(0);
       this.beamColors.fill(0);
       this.ships.forEach((ship, i) => {
         const fade = ship.state === 'leaving' ? 1 - ship.t : 1;
         q.setFromUnitVectors(FORWARD, ship.dir);
-        this.hulls.setMatrixAt(i, m.compose(ship.pos, q, one.setScalar(Math.max(0.01, fade))));
+        if (detailed) {
+          const model = modelFor(ship.jobs.length) as keyof typeof used;
+          const sc = MODEL_SCALE[model] * 1.1 * Math.max(0.01, fade);
+          const throttle = ship.state === 'beaming' ? 0.3 : 1.1;
+          const flick = Math.sin(this.clock * 40 + i * 2.3) * 0.5 + Math.sin(this.clock * 27 + i) * 0.5;
+          this.fleets[model].setShip(used[model]++, m.compose(ship.pos, q, one.setScalar(sc)), throttle, flick);
+        } else this.hulls.setMatrixAt(i, m.compose(ship.pos, q, one.setScalar(Math.max(0.01, fade))));
         const base = i * (BEAM_PARTICLES + 2);
         g.positions.set([ship.pos.x, ship.pos.y, ship.pos.z], base * 3);
         g.sizes[base] = 4;
@@ -363,6 +390,10 @@ export class ActivityLayer {
         );
       });
       this.hulls.instanceMatrix.needsUpdate = true;
+      for (const [k, fleet] of Object.entries(this.fleets)) {
+        fleet.count = used[k as keyof typeof used];
+        fleet.touch();
+      }
       g.touch();
       this.beamLine.geometry.getAttribute('position').needsUpdate = true;
       this.beamLine.geometry.getAttribute('color').needsUpdate = true;

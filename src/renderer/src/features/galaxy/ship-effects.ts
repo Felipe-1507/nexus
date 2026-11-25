@@ -12,6 +12,7 @@ import type { Animator } from './ambient';
 import { haloBuffer, type Effect } from './effects';
 import type { GalaxyLayout } from './layout';
 import type { GalaxyProfile } from './quality';
+import { exhaust, Fleet, LIVERIES, MODEL_SCALE, type ShipModel } from './ship-models';
 
 /**
  * Naves ambientais (Galáxia Viva, G4): poucas naves cruzando a galáxia, ora visitando um sistema (dão algumas voltas em
@@ -21,6 +22,9 @@ import type { GalaxyProfile } from './quality';
 const SHIP_SPEED = 10;
 const TRAIL = 12;
 const TRAIL_EVERY_S = 0.12;
+/** Alta/Ultra: rastro mais denso (vira um jato contínuo que se apaga). */
+const DETAIL_TRAIL = 30;
+const DETAIL_TRAIL_EVERY_S = 0.035;
 const FORWARD = new Vector3(0, 0, 1);
 
 export type ShipTarget =
@@ -90,11 +94,34 @@ export function createShips(
   let current = layout;
   let radius = galaxyRadius(layout);
 
+  // Alta/Ultra: naves de verdade (modelos, pinturas e propulsores) com rastro contínuo; nos outros modos, os cones.
+  const detailed = profile.planetDetail > 0;
+  const TR = detailed ? DETAIL_TRAIL : TRAIL;
+  const MODELS: ShipModel[] = ['batedor', 'batedor', 'correio', 'correio', 'cruzador', 'cargueiro'];
+  const kinds = Array.from({ length: count }, () => ({
+    model: MODELS[Math.floor(rand() * MODELS.length)]!,
+    livery: Math.floor(rand() * LIVERIES.length),
+  }));
+  const fleets = new Map<string, Fleet>();
+  const slot: Array<{ fleet: Fleet; index: number }> = [];
+  if (detailed) {
+    for (const k of kinds) {
+      const key = k.model + ':' + k.livery;
+      let fleet = fleets.get(key);
+      if (!fleet) {
+        fleet = new Fleet(k.model, LIVERIES[k.livery]!, count);
+        fleets.set(key, fleet);
+      }
+      slot.push({ fleet, index: fleet.hull.count });
+      fleet.count = fleet.hull.count + 1;
+    }
+  }
   const geometry = new ConeGeometry(0.32, 1.3, 6);
   geometry.rotateX(Math.PI / 2); // a ponta passa a apontar para +Z (a frente da nave)
   const hulls = new InstancedMesh(geometry, new MeshBasicMaterial({ color: 0xffffff }), count);
   hulls.frustumCulled = false;
-  const halo = haloBuffer(count * TRAIL, material);
+  if (detailed) hulls.count = 0;
+  const halo = haloBuffer(count * TR, material);
   halo.points.frustumCulled = false;
   const engine = new Color('#9fd8ff');
   const tint = new Color();
@@ -102,8 +129,11 @@ export function createShips(
 
   const ships: Ship[] = Array.from({ length: count }, (_, i) => {
     const start = planShipTarget(current, rand, radius).point;
-    hulls.setColorAt(i, tint.set(hullColors[i % hullColors.length]!));
-    for (let k = 0; k < TRAIL; k++) halo.set(i * TRAIL + k, start, engine, 2.2 * (1 - k / TRAIL) + 0.6, 0);
+    if (!detailed) hulls.setColorAt(i, tint.set(hullColors[i % hullColors.length]!));
+    const flame = detailed ? tint.set(LIVERIES[kinds[i]!.livery]!.engine) : engine;
+    const size = detailed ? MODEL_SCALE[kinds[i]!.model] : 1;
+    for (let k = 0; k < TR; k++)
+      halo.set(i * TR + k, start, flame, (detailed ? 1.6 * size : 2.2) * (1 - k / TR) + 0.5, 0);
     const ship: Ship = {
       pos: start.clone(),
       dir: new Vector3(1, 0, 0),
@@ -142,9 +172,13 @@ export function createShips(
   const q = new Quaternion();
   const one = new Vector3(1, 1, 1);
   const prev = new Vector3();
+  const scale = new Vector3();
+  const exhaustAt = new Vector3();
+  let clock = 0;
 
   const animator: Animator = {
     update(dt) {
+      clock += dt;
       ships.forEach((ship, i) => {
         prev.copy(ship.pos);
         if (ship.orbit) {
@@ -179,33 +213,46 @@ export function createShips(
         const step = prev.distanceToSquared(ship.pos);
         if (step > 1e-8) ship.dir.subVectors(ship.pos, prev).normalize();
         q.setFromUnitVectors(FORWARD, ship.dir);
-        hulls.setMatrixAt(i, m.compose(ship.pos, q, one));
+        let tail = ship.pos;
+        if (detailed) {
+          const kind = kinds[i]!;
+          const sc = MODEL_SCALE[kind.model];
+          m.compose(ship.pos, q, scale.setScalar(sc));
+          const { fleet, index } = slot[i]!;
+          // Acelera viajando, quase desliga dando voltas no sistema.
+          const throttle = ship.orbit ? 0.45 : 1;
+          fleet.setShip(index, m, throttle, Math.sin(clock * 37 + i * 3.1) * 0.5 + Math.sin(clock * 23 + i) * 0.5);
+          tail = exhaustAt.copy(exhaust(kind.model)).multiplyScalar(sc).applyQuaternion(q).add(ship.pos);
+        } else hulls.setMatrixAt(i, m.compose(ship.pos, q, one));
 
         // Rastro: guarda posições de tempos em tempos; o mais novo fica atrás do motor.
         ship.trailWait -= dt;
         if (ship.trailWait <= 0) {
-          ship.trailWait = TRAIL_EVERY_S;
-          ship.trail.unshift(ship.pos.clone());
-          if (ship.trail.length > TRAIL) ship.trail.pop();
+          ship.trailWait = detailed ? DETAIL_TRAIL_EVERY_S : TRAIL_EVERY_S;
+          ship.trail.unshift(tail.clone());
+          if (ship.trail.length > TR) ship.trail.pop();
         }
-        for (let k = 0; k < TRAIL; k++) {
-          const p = k === 0 ? ship.pos : ship.trail[k - 1];
-          const slot = i * TRAIL + k;
+        for (let k = 0; k < TR; k++) {
+          const p = k === 0 ? tail : ship.trail[k - 1];
+          const slot = i * TR + k;
           if (!p) {
             halo.alphas[slot] = 0;
             continue;
           }
           halo.positions.set([p.x, p.y, p.z], slot * 3);
-          halo.alphas[slot] = (k === 0 ? 0.8 : 0.45) * (1 - k / TRAIL);
+          halo.alphas[slot] = detailed
+            ? (k === 0 ? 0.9 : 0.35) * (1 - k / TR) ** 1.6
+            : (k === 0 ? 0.8 : 0.45) * (1 - k / TRAIL);
         }
       });
       hulls.instanceMatrix.needsUpdate = true;
+      for (const fleet of fleets.values()) fleet.touch();
       halo.touch();
       return true;
     },
   };
   return {
-    objects: [hulls, halo.points],
+    objects: [hulls, halo.points, ...[...fleets.values()].flatMap((f) => f.objects)],
     animator,
     setLayout(next) {
       current = next;

@@ -270,14 +270,24 @@ const RING_FRAGMENT = /* glsl */ `
     float t = clamp((r - ${RING_INNER.toFixed(2)}) / ${(RING_OUTER - RING_INNER).toFixed(2)}, 0.0, 1.0);
     float bands = 0.5 + 0.5 * sin(r * 38.0 + vS * 10.0) * (0.6 + 0.4 * sin(r * 11.0 + vS));
     float edge = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.9, 1.0, t));
+    #if DETAIL > 0
+    // Alta/Ultra: muitas faixas finas de partículas, uma divisão escura e transparência maior (nada de "alvo").
+    float fine = 0.5 + 0.5 * sin(r * 140.0 + vS * 7.0) * sin(r * 53.0 + vS * 3.0);
+    float gap = 1.0 - 0.9 * (1.0 - smoothstep(0.0, 0.035, abs(t - (0.58 + 0.12 * fract(vS * 0.37)))));
+    float dens = (0.35 + 0.65 * smoothstep(0.0, 0.5, t)) * (1.0 - smoothstep(0.75, 1.0, t));
+    float alpha = edge * gap * dens * (0.08 + 0.32 * fine * bands);
+    gl_FragColor = vec4(vC * (0.75 + 0.45 * fine), alpha);
+    #else
     float alpha = edge * (0.22 + 0.5 * bands) * 0.9;
     gl_FragColor = vec4(vC * (0.7 + 0.5 * bands), alpha);
+    #endif
     #include <colorspace_fragment>
   }
 `;
 
-export function createRingMaterial(): ShaderMaterial {
+export function createRingMaterial(detail = 0): ShaderMaterial {
   return new ShaderMaterial({
+    defines: { DETAIL: detail },
     vertexShader: RING_VERTEX,
     fragmentShader: RING_FRAGMENT,
     transparent: true,
