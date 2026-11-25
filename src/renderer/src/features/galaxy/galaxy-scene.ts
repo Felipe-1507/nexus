@@ -875,7 +875,14 @@ export class GalaxyScene {
   private buildPlanets(styles: PlanetStyle[]): void {
     const { notes } = this.layout;
     const n = notes.length;
-    const geometry = new SphereGeometry(1, 28, 20);
+    // Mais detalhe pede mais triângulos (o contorno deixa de parecer facetado).
+    const detail = this.profile.planetDetail;
+    const geometry =
+      detail === 2
+        ? new SphereGeometry(1, 96, 64)
+        : detail === 1
+          ? new SphereGeometry(1, 64, 44)
+          : new SphereGeometry(1, 28, 20);
     const colorA = new Float32Array(n * 3);
     const colorB = new Float32Array(n * 3);
     const params = new Float32Array(n * 4);
@@ -891,7 +898,7 @@ export class GalaxyScene {
 
     const mesh = new InstancedMesh(
       geometry,
-      createPlanetMaterial(this.time, this.rim, this.planetBoost),
+      createPlanetMaterial(this.time, this.rim, this.planetBoost, detail),
       Math.max(1, n),
     );
     mesh.count = n;

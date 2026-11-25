@@ -35,6 +35,8 @@ export interface GalaxyProfile {
   eclipse: { dust: number; periphery: number; octaves: number; segments: number; lensStars: number };
   /** Pós-processamento (bloom, cor de cinema, vinheta, grão). null = desenho direto. */
   post: PostFxSettings | null;
+  /** Detalhe dos planetas: 0 = como sempre, 1 = Alta (relevo, terminador, dispersão), 2 = Ultra (mais relevo e ruído). */
+  planetDetail: 0 | 1 | 2;
   /** Limites para os efeitos das próximas etapas (G2 em diante). */
   limits: {
     ambientShips: number;
@@ -63,6 +65,7 @@ const BASE: Record<'original' | 'leve', GalaxyProfile> = {
     nearStars: 1400,
     rim: 1,
     post: null,
+    planetDetail: 0,
     eclipse: { dust: 2600, periphery: 1400, octaves: 3, segments: 128, lensStars: 7000 },
     shootingStarEverySec: 12,
     cometEverySec: 9,
@@ -88,6 +91,7 @@ const BASE: Record<'original' | 'leve', GalaxyProfile> = {
     nearStars: 450,
     rim: 0.6,
     post: null,
+    planetDetail: 0,
     eclipse: { dust: 700, periphery: 320, octaves: 2, segments: 64, lensStars: 2200 },
     shootingStarEverySec: 30,
     cometEverySec: 22,
@@ -107,6 +111,7 @@ const BASE: Record<'original' | 'leve', GalaxyProfile> = {
 const ALTA: GalaxyProfile = {
   ...BASE.original,
   quality: 'alta',
+  planetDetail: 1,
   post: {
     bloom: { strength: 0.45, radius: 0.4, threshold: 0.85 },
     exposure: 0.95,
@@ -119,6 +124,7 @@ const ALTA: GalaxyProfile = {
 const ULTRA: GalaxyProfile = {
   ...BASE.original,
   quality: 'ultra',
+  planetDetail: 2,
   maxPixelRatio: 2.5,
   backgroundStars: 6000,
   nearStars: 3000,

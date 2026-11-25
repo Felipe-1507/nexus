@@ -30,6 +30,9 @@ const PLANET_VERTEX = /* glsl */ `
   varying float vGlow;
   varying float vMatch;
   varying vec3 vL;
+  varying vec3 vBX;
+  varying vec3 vBY;
+  varying vec3 vBZ;
   void main() {
     vMatch = aMatch;
     // Rotação: a superfície gira em volta do eixo do planeta (a luz fica parada), cada um no seu ritmo e sentido.
@@ -49,6 +52,11 @@ const PLANET_VERTEX = /* glsl */ `
     vec4 mv = modelViewMatrix * instanceMatrix * vec4(position * boost, 1.0);
     vN = normalize(mat3(modelViewMatrix) * mat3(instanceMatrix) * normal);
     vV = normalize(-mv.xyz);
+    // Base que leva direções da superfície (já girada) para a câmera: usada pelo relevo dos modos Alta/Ultra.
+    mat3 toView = mat3(modelViewMatrix) * mat3(instanceMatrix);
+    vBX = normalize(toView * vec3(cs, 0.0, sn));
+    vBY = normalize(toView * vec3(0.0, 1.0, 0.0));
+    vBZ = normalize(toView * vec3(-sn, 0.0, cs));
     // Direção do sol (que fica na origem do mundo) vista deste planeta: viewMatrix[3] é a origem em coordenadas da câmera.
     vL = viewMatrix[3].xyz - mv.xyz;
     gl_Position = projectionMatrix * mv;
@@ -67,7 +75,11 @@ const PLANET_FRAGMENT = /* glsl */ `
   varying float vGlow;
   varying float vMatch;
   varying vec3 vL;
+  varying vec3 vBX;
+  varying vec3 vBY;
+  varying vec3 vBZ;
   uniform float uRim;
+  uniform float uTime;
 
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
@@ -87,7 +99,14 @@ const PLANET_FRAGMENT = /* glsl */ `
   }
   float fbm(vec3 p) {
     float a = 0.5; float s = 0.0;
-    for (int i = 0; i < 4; i++) { s += a * vnoise(p); p *= 2.03; a *= 0.5; }
+    for (int i = 0; i < OCTAVES; i++) { s += a * vnoise(p); p *= 2.03; a *= 0.5; }
+    return s;
+  }
+
+  // Relevo: poucas camadas e baixa frequência; detalhe fino demais vira chuvisco na tela.
+  float relief(vec3 p) {
+    float a = 0.5; float s = 0.0;
+    for (int i = 0; i < 3; i++) { s += a * vnoise(p); p *= 2.1; a *= 0.5; }
     return s;
   }
 
@@ -112,7 +131,12 @@ const PLANET_FRAGMENT = /* glsl */ `
     } else if (kind < 2.5) {     // oceano: continentes e nuvens
       float land = smoothstep(0.50, 0.56, n);
       col = mix(vB, vA, land);
+      #if DETAIL > 0
+      // Nuvens andam devagar sobre a superfície.
+      float cloud = smoothstep(0.55, 0.78, fbm(q * 1.8 + 9.0 + vec3(uTime * 0.02, 0.0, uTime * 0.012)));
+      #else
       float cloud = smoothstep(0.55, 0.78, fbm(q * 1.8 + 9.0));
+      #endif
       col = mix(col, vec3(1.0), cloud * 0.55);
       spec = (1.0 - land) * (1.0 - cloud) * 0.4;
     } else if (kind < 3.5) {     // gelo: claro, com rachaduras
@@ -144,11 +168,33 @@ const PLANET_FRAGMENT = /* glsl */ `
     }
 
     // O lado claro olha para o sol; parte da luz continua vindo da câmera, para o outro lado não sumir.
-    vec3 L = normalize(mix(normalize(vec3(0.45, 0.55, 0.7)), normalize(vL), 0.45));
     vec3 N = normalize(vN);
     vec3 V = normalize(vV);
+    #if DETAIL > 0
+    // Alta/Ultra: a luz vem quase toda do sol, com terminador suave, e o relevo (ruído) desvia a normal.
+    vec3 L = normalize(mix(normalize(vec3(0.45, 0.55, 0.7)), normalize(vL), 0.75));
+    float bumpK = kind < 0.5 ? 0.9 : kind < 1.5 ? 0.12 : kind < 2.5 ? 0.5 : kind < 3.5 ? 0.35 : kind < 4.5 ? 0.8 : kind < 5.5 ? 0.45 : 0.25;
+    // Relevo calculado na própria esfera (diferenças finitas do ruído), sem depender dos pixels: não serrilha.
+    float k = bumpK * (DETAIL > 1 ? 0.3 : 0.22);
+    vec3 t1 = normalize(cross(p, abs(p.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 t2 = cross(p, t1);
+    float e = 0.03;
+    vec3 sc = vec3(vP.w * 1.6);
+    vec3 off = vec3(seed * 1.7);
+    float h0 = relief(p * sc + off);
+    float h1 = relief(normalize(p + e * t1) * sc + off);
+    float h2 = relief(normalize(p + e * t2) * sc + off);
+    vec3 nObj = normalize(p - k * ((h1 - h0) / e * t1 + (h2 - h0) / e * t2));
+    N = normalize(vBX * nObj.x + vBY * nObj.y + vBZ * nObj.z);
+    if (dot(N, V) < 0.0) N = normalize(vN);
+    float ndl = dot(N, L);
+    float diff = smoothstep(-0.12, 1.0, ndl);
+    float light = 0.07 + 1.15 * diff;
+    #else
+    vec3 L = normalize(mix(normalize(vec3(0.45, 0.55, 0.7)), normalize(vL), 0.45));
     float diff = max(dot(N, L), 0.0);
     float light = 0.2 + 0.95 * diff;
+    #endif
     float rim = pow(1.0 - max(dot(N, V), 0.0), 2.6);
 
     vec3 outc = col * light + col * emissive;
@@ -156,6 +202,13 @@ const PLANET_FRAGMENT = /* glsl */ `
     outc += vAt.rgb * rim * vAt.a * (0.35 + 0.9 * diff);   // atmosfera: brilho na borda
     // Fresnel discreto em todos os planetas: a borda iluminada destaca o volume contra o fundo escuro.
     outc += mix(col, vec3(0.75, 0.85, 1.0), 0.5) * rim * uRim * 0.35 * (0.3 + 0.7 * diff);
+    #if DETAIL > 0
+    // Dispersão atmosférica: halo fino na borda do lado do sol, alaranjado perto do terminador.
+    vec3 sky = vAt.a > 0.0 ? vAt.rgb : mix(col, vec3(0.6, 0.75, 1.0), 0.6);
+    float dayRim = rim * smoothstep(-0.25, 0.6, dot(normalize(vN), L));
+    float dusk = rim * (1.0 - smoothstep(0.0, 0.35, abs(dot(normalize(vN), L))));
+    outc += sky * dayRim * (DETAIL > 1 ? 0.75 : 0.5) + vec3(1.0, 0.55, 0.25) * dusk * 0.35;
+    #endif
     outc += col * 0.35 * vGlow;                            // nota recente
     // Busca: o que ficou de fora vira silhueta escura; o que foi encontrado ganha brilho e borda clara.
     float dimmed = step(0.5, vMatch) * (1.0 - step(1.5, vMatch));
@@ -174,12 +227,15 @@ export interface PlanetBoost {
   uPxScale: { value: number };
 }
 
+/** `detail`: 0 = como sempre (Leve/Original), 1 = Alta, 2 = Ultra (relevo, terminador, dispersão e mais ruído). */
 export function createPlanetMaterial(
   time: { value: number },
   rim: { value: number },
   boost: PlanetBoost = { uMinPx: { value: 0 }, uPxScale: { value: 1 } },
+  detail = 0,
 ): ShaderMaterial {
   return new ShaderMaterial({
+    defines: { DETAIL: detail, OCTAVES: detail === 0 ? 4 : detail === 1 ? 6 : 7 },
     vertexShader: PLANET_VERTEX,
     fragmentShader: PLANET_FRAGMENT,
     uniforms: { uTime: time, uRim: rim, ...boost },
