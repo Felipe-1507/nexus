@@ -47,6 +47,7 @@ import { PostFx } from './post-fx';
 import { planTour, TOUR_DWELL_MS, TOUR_FLY_MS, type TourStop } from './explore';
 import { createMoons, MOON_LABELS, moonKind, moonName, moonPosition, planMoons, type MoonPlan } from './moon-effects';
 import { createSystemStarMaterial } from './system-star';
+import { createDeepSky } from './deep-sky';
 import { createPlanetMaterial, createRingMaterial, kindIndex, RING_INNER, RING_OUTER } from './planet-material';
 
 export interface GalaxyCallbacks {
@@ -245,6 +246,7 @@ export class GalaxyScene {
     this.scene.add(this.camera);
     this.stars = this.backgroundStars();
     this.scene.add(...this.stars);
+    this.syncSky();
     this.scene.add(this.content);
 
     this.haloMaterial = new ShaderMaterial({
@@ -347,7 +349,23 @@ export class GalaxyScene {
   }
 
   /** Refaz as camadas de estrelas do fundo (mudou o modo ou o estilo). */
+  /** Fundo profundo (nebulosas no infinito), só na Alta e na Ultra. */
+  private sky: Mesh | null = null;
+
+  private syncSky(): void {
+    if (this.sky) {
+      this.scene.remove(this.sky);
+      this.sky.geometry.dispose();
+      (this.sky.material as Material).dispose();
+      this.sky = null;
+    }
+    if (this.profile.planetDetail === 0) return;
+    this.sky = createDeepSky(this.time, this.profile.planetDetail);
+    this.scene.add(this.sky);
+  }
+
   private rebuildStars(): void {
+    this.syncSky();
     for (const layer of this.stars) {
       this.scene.remove(layer);
       layer.geometry.dispose();
