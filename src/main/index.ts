@@ -1,4 +1,16 @@
-import { app, BrowserWindow, clipboard, crashReporter, dialog, Menu, nativeImage, session, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  crashReporter,
+  dialog,
+  Menu,
+  nativeImage,
+  Notification,
+  session,
+  shell,
+} from 'electron';
+import { turnNotice } from './core/chat/turn-notice';
 import {
   deleteSession,
   forkSession,
@@ -232,7 +244,33 @@ function bootstrap(): void {
   });
   const batcher = createEventBatcher((event) => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(CHAT_EVENT_CHANNEL, event);
+    notifyTurnEnd(event);
   });
+  // Resposta terminou com o Nexus em segundo plano: aviso do Windows (clicar traz a janela). Sem IA: projeto + 1ª linha.
+  function notifyTurnEnd(event: Parameters<typeof turnNotice>[0]): void {
+    if (event.type !== 'turn-end' || !Notification.isSupported()) return;
+    if (BrowserWindow.getAllWindows().some((w) => w.isFocused())) return;
+    try {
+      const row = db.db
+        .prepare(
+          'SELECT c.title AS title, p.name AS project FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?',
+        )
+        .get(event.conversationId) as { title: string; project: string | null } | undefined;
+      const notice = turnNotice(event, { projectName: row?.project ?? null, conversationTitle: row?.title ?? '' });
+      if (!notice) return;
+      const n = new Notification({ title: notice.title, body: notice.body, silent: false });
+      n.on('click', () => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (!win) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+      });
+      n.show();
+    } catch (err) {
+      log.warn('Aviso de resposta pronta falhou', { erro: err instanceof Error ? err.message : String(err) });
+    }
+  }
   broker = new PermissionBroker({ emit: batcher.push });
   const claudeUpdates = new ClaudeUpdateService({ fetch: (url, init) => fetch(url, init) });
   const models = new ModelCatalogService({ createQuery: (args) => query(args), env: process.env, cwd: paths.userData });

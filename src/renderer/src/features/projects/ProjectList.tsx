@@ -9,6 +9,7 @@ import { useActiveWorkspace } from '@renderer/features/workspaces/queries';
 import { cn } from '@renderer/lib/cn';
 import { AddProjectDialog } from './AddProjectDialog';
 import { moveBefore, moveBy } from './order';
+import { GENERAL, useProjectActivity, type ProjectActivity } from './project-activity';
 import { useProjects, useReorderProjects } from './queries';
 
 /** Caminho de rede (\\servidor\...). */
@@ -34,6 +35,7 @@ export function ProjectList() {
   const setView = useLayout((s) => s.setView);
   const [adding, setAdding] = useState(false);
   const reorder = useReorderProjects(workspace?.id ?? '');
+  const activity = useProjectActivity(workspace?.id);
   // Arrastar: `dropBefore` é o projeto antes do qual o arrastado cairia (null = no fim, undefined = em lugar nenhum).
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropBefore, setDropBefore] = useState<string | null | undefined>(undefined);
@@ -95,6 +97,7 @@ export function ProjectList() {
             title="Conversas gerais do Workspace"
             active={scope === null}
             onClick={() => open(null, 'chat')}
+            activity={activity[GENERAL]}
           />
         </li>
         {projects.data?.map((p) => {
@@ -125,6 +128,7 @@ export function ProjectList() {
                 active={scope === p.id}
                 onClick={() => open(p.id, 'chat')}
                 issue={issue}
+                activity={activity[p.id]}
                 onKeyDown={(e) => onKeyDown(e, p.id)}
               />
               <IconButton
@@ -165,6 +169,7 @@ function Item({
   active,
   onClick,
   issue,
+  activity,
   onKeyDown,
 }: {
   icon: ReactNode;
@@ -173,6 +178,7 @@ function Item({
   active: boolean;
   onClick: () => void;
   issue?: string | null;
+  activity?: ProjectActivity;
   onKeyDown?: (e: KeyboardEvent) => void;
 }) {
   return (
@@ -191,6 +197,38 @@ function Item({
       <span className={active ? 'text-accent' : undefined}>{icon}</span>
       <span className="truncate">{label}</span>
       {issue && <AlertTriangle size={12} className="shrink-0 text-amber-500" aria-label={issue} />}
+      {activity && <ActivityMark activity={activity} />}
     </button>
+  );
+}
+
+const ACTIVITY_LABEL: Record<ProjectActivity, string> = {
+  working: 'O Claude está trabalhando aqui',
+  approval: 'O Claude espera sua aprovação aqui',
+  done: 'Resposta pronta aqui',
+};
+
+/** Sinal do projeto na barra lateral: três pontos piscando (trabalhando), âmbar pulsando (aprovação) ou ponto verde (pronto). */
+function ActivityMark({ activity }: { activity: ProjectActivity }) {
+  const label = ACTIVITY_LABEL[activity];
+  return (
+    <span
+      className="ml-auto flex shrink-0 items-center"
+      title={label}
+      aria-label={label}
+      data-testid={'project-activity-' + activity}
+    >
+      {activity === 'working' ? (
+        <span className="work-dots flex gap-0.5" aria-hidden>
+          <span className="size-1 rounded-full bg-accent" />
+          <span className="size-1 rounded-full bg-accent" />
+          <span className="size-1 rounded-full bg-accent" />
+        </span>
+      ) : activity === 'approval' ? (
+        <span className="size-1.5 animate-pulse rounded-full bg-amber-500" aria-hidden />
+      ) : (
+        <span className="size-1.5 rounded-full bg-ok" aria-hidden />
+      )}
+    </span>
   );
 }
