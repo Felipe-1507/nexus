@@ -1185,6 +1185,9 @@ export class GalaxyScene {
 
   /** Posição e tamanho da sombra do buraco negro na tela, para a lente nas estrelas (só no estilo Eclipse). */
   private updateLens(): void {
+    // A câmera acabou de andar (controles) e as matrizes dela só seriam atualizadas dentro do render: sem isto, a lente
+    // usava a posição do quadro anterior e a sombra pulava para fora do lugar ao girar (e ficava torta quando parava).
+    this.camera.updateMatrixWorld();
     // Contorno da sombra na tela: projeta as quatro pontas (direita, esquerda, cima, baixo vistas pela câmera). Fora do
     // centro da tela, a perspectiva desloca e alarga a esfera; projetar só o centro deixava a lente fora do lugar.
     const R = this.shadowRadius;
