@@ -1,7 +1,7 @@
 {
   "name": "nexus",
   "productName": "Nexus",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Nexus: segundo cérebro + chat com o Claude Code",
   "private": true,
   "type": "module",

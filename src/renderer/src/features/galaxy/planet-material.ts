@@ -172,7 +172,7 @@ const PLANET_FRAGMENT = /* glsl */ `
     vec3 V = normalize(vV);
     #if DETAIL > 0
     // Alta/Ultra: a luz vem quase toda do sol, com terminador suave, e o relevo (ruído) desvia a normal.
-    vec3 L = normalize(mix(normalize(vec3(0.45, 0.55, 0.7)), normalize(vL), 0.75));
+    vec3 L = normalize(mix(normalize(vec3(0.45, 0.55, 0.7)), normalize(vL), 0.88));
     float bumpK = kind < 0.5 ? 0.9 : kind < 1.5 ? 0.12 : kind < 2.5 ? 0.5 : kind < 3.5 ? 0.35 : kind < 4.5 ? 0.8 : kind < 5.5 ? 0.45 : 0.25;
     // Relevo calculado na própria esfera (diferenças finitas do ruído), sem depender dos pixels: não serrilha.
     // Perto do contorno o relevo some aos poucos: visto de lado ele vira serrilhado.

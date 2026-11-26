@@ -13,6 +13,7 @@ import {
 import type { Animator } from './ambient';
 import type { GalaxyLayout } from './layout';
 import type { GalaxyProfile } from './quality';
+import { TrailRibbon } from './trail-ribbon';
 
 /**
  * Efeitos do movimento ambiente da galáxia (Galáxia Viva). Cada efeito é um objeto da cena mais uma animação que o
@@ -130,6 +131,9 @@ const SHOOTING_LIFE_S = 0.9;
 const SHOOTING_RADIUS = 1700;
 const SHOOTING_SPEED = 900;
 const SHOOTING_LENGTH = 170;
+/** Alta/Ultra: pontos da fita e faíscas por estrela cadente. */
+const SHOOTING_POINTS = 14;
+const SHOOTING_SPARKS = 8;
 
 interface Streak {
   start: Vector3;
@@ -141,7 +145,21 @@ interface Streak {
  * Estrelas cadentes no céu do fundo, de tempos em tempos (o intervalo vem do perfil). Enquanto uma passa, o movimento
  * é rápido; no resto do tempo não pesa nada.
  */
-export function createShootingStars(profile: () => GalaxyProfile, rand: () => number): Effect {
+export function createShootingStars(
+  profile: () => GalaxyProfile,
+  rand: () => number,
+  /** Alta/Ultra: material dos pontos de luz; liga a fita com brilho na cabeça e faíscas. */
+  detail: ShaderMaterial | null = null,
+): Effect {
+  const ribbon = detail ? new TrailRibbon(SHOOTING_MAX, SHOOTING_POINTS, 1) : null;
+  const flare = detail ? haloBuffer(SHOOTING_MAX * (2 + SHOOTING_SPARKS), detail) : null;
+  if (flare) flare.points.frustumCulled = false;
+  const sparkJitter = Array.from({ length: SHOOTING_MAX * SHOOTING_SPARKS }, () => [rand() - 0.5, rand() - 0.5, rand() - 0.5, rand()]);
+  const white = new Color('#f2f7ff');
+  const ice = new Color('#bcd8ff');
+  const streakColor = new Color();
+  const path: Vector3[] = Array.from({ length: SHOOTING_POINTS }, () => new Vector3());
+  const spark = new Vector3();
   const positions = new Float32Array(SHOOTING_MAX * 6);
   const colors = new Float32Array(SHOOTING_MAX * 6);
   const geometry = new BufferGeometry();
@@ -193,6 +211,8 @@ export function createShootingStars(profile: () => GalaxyProfile, rand: () => nu
         const st = streaks[k];
         if (!st) {
           colors.fill(0, k * 6, k * 6 + 6);
+          ribbon?.hide(k);
+          if (flare) flare.alphas.fill(0, k * (2 + SHOOTING_SPARKS), (k + 1) * (2 + SHOOTING_SPARKS));
           continue;
         }
         const life = st.t / SHOOTING_LIFE_S;
@@ -206,12 +226,34 @@ export function createShootingStars(profile: () => GalaxyProfile, rand: () => nu
           .multiplyScalar(-SHOOTING_LENGTH * Math.min(1, life * 3))
           .add(head);
         positions.set([head.x, head.y, head.z, tail.x, tail.y, tail.z], k * 6);
+        if (ribbon && flare) {
+          // Fita do rastro (afina e esfria até a cauda), clarão na cabeça e faíscas que se soltam e apagam.
+          colors.fill(0, k * 6, k * 6 + 6);
+          for (let n = 0; n < SHOOTING_POINTS; n++) path[n]!.lerpVectors(head, tail, n / (SHOOTING_POINTS - 1));
+          ribbon.set(k, path);
+          ribbon.style(k, streakColor.copy(ice).multiplyScalar(fade), 3.2);
+          const base = k * (2 + SHOOTING_SPARKS);
+          flare.set(base, head, white, 26, 0.95 * fade);
+          flare.set(base + 1, head, ice, 70, 0.28 * fade);
+          for (let n = 0; n < SHOOTING_SPARKS; n++) {
+            const j = sparkJitter[k * SHOOTING_SPARKS + n]!;
+            const u = (j[3]! + st.t * 1.7) % 1;
+            spark.lerpVectors(head, tail, u * 0.8);
+            spark.x += j[0]! * 40 * u;
+            spark.y += j[1]! * 40 * u - 25 * u * u;
+            spark.z += j[2]! * 40 * u;
+            flare.set(base + 2 + n, spark, white, 7 + 6 * (1 - u), fade * 0.8 * (1 - u) * (0.6 + 0.4 * Math.sin(st.t * 60 + n)));
+          }
+          continue;
+        }
         colors.set([0.95 * fade, 0.97 * fade, fade, 0, 0, 0], k * 6);
       }
       position.needsUpdate = true;
       color.needsUpdate = true;
+      ribbon?.touch();
+      flare?.touch();
       return true;
     },
   };
-  return { objects: [lines], animator };
+  return { objects: [lines, ...(ribbon ? [ribbon.mesh] : []), ...(flare ? [flare.points] : [])], animator };
 }

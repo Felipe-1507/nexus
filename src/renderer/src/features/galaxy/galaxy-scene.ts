@@ -81,6 +81,24 @@ const CLICK_SLOP_PX = 5;
 const SETTLE_MS = 2000;
 
 // Halo: um ponto por planeta ou estrela, com tamanho e transparência próprios, apagando do centro para a borda.
+/** Órbitas da Alta/Ultra: fortes atrás de cada planeta, quase sumidas no resto, completas no sistema em foco. */
+const ORBIT_VERTEX = /* glsl */ `
+  attribute float aNear;
+  attribute float aSystem;
+  uniform float uFocus;
+  varying vec3 vOrbit;
+  void main() {
+    float focus = abs(aSystem - uFocus) < 0.5 ? 1.0 : 0.0;
+    float a = mix(0.025 + 0.3 * aNear, 0.22 + 0.15 * aNear, focus);
+    vOrbit = color * a;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const ORBIT_FRAGMENT = /* glsl */ `
+  varying vec3 vOrbit;
+  void main() { gl_FragColor = vec4(vOrbit, 1.0); }
+`;
+
 const HALO_VERTEX = /* glsl */ `
   attribute float size;
   attribute float alpha;
@@ -88,11 +106,15 @@ const HALO_VERTEX = /* glsl */ `
   varying float vAlpha;
   varying vec3 vColor;
   uniform float scale;
+  uniform float maxSize;
   void main() {
-    vAlpha = alpha;
     vColor = color;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = size * scale / -mv.z;
+    float px = size * scale / -mv.z;
+    // Alta/Ultra: pontos enormes viram "bokeh" (discos borrados na frente de tudo); o tamanho tem teto e o
+    // que passaria dele perde brilho, em vez de crescer.
+    gl_PointSize = min(px, maxSize);
+    vAlpha = alpha * min(1.0, pow(maxSize / max(px, 1.0), 1.5));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -148,6 +170,8 @@ export class GalaxyScene {
   private systemLabels: Array<{ el: HTMLDivElement; pos: Vector3; extent: number }> = [];
   private selected: number | null = null;
   private hovered: number | null = null;
+  /** Alta/Ultra: sistema cujas órbitas aparecem completas (o do planeta sob o mouse ou selecionado); -1 = nenhum. */
+  private readonly orbitFocus = { value: -1 };
   private pointer: { x: number; y: number } | null = null;
   private down: { x: number; y: number } | null = null;
   private fly: {
@@ -252,7 +276,7 @@ export class GalaxyScene {
     this.haloMaterial = new ShaderMaterial({
       vertexShader: HALO_VERTEX,
       fragmentShader: HALO_FRAGMENT,
-      uniforms: { scale: { value: 1 } },
+      uniforms: { scale: { value: 1 }, maxSize: { value: 4096 } },
       transparent: true,
       depthWrite: false,
       blending: AdditiveBlending,
@@ -767,7 +791,11 @@ export class GalaxyScene {
       return;
     }
     this.dropPersistent();
-    const effects: Effect[] = [createShootingStars(() => this.profile, seeded(17))];
+    const effects: Effect[] = [createShootingStars(
+        () => this.profile,
+        seeded(17),
+        this.profile.planetDetail > 0 ? this.haloMaterial : null,
+      )];
     const ships = createShips(this.layout, this.profile, this.haloMaterial, seeded(29));
     if (ships) effects.push(ships);
     this.container.dataset.ships = String(ships ? this.profile.limits.ambientShips : 0);
@@ -799,16 +827,31 @@ export class GalaxyScene {
     const SEGMENTS = 96;
     const positions = new Float32Array(orbits.length * SEGMENTS * 6);
     const colors = new Float32Array(orbits.length * SEGMENTS * 6);
+    const near = new Float32Array(orbits.length * SEGMENTS * 2);
+    const owner = new Float32Array(orbits.length * SEGMENTS * 2);
     const c = new Color();
     let k = 0;
     for (const o of orbits) {
       const s = systems[o.system]!;
       c.set(s.color);
+      // Ângulos dos planetas desta órbita: o traço fica forte logo atrás de cada um e some no resto (Alta/Ultra).
+      const planets = this.layout.notes
+        .filter((n) => n.system === o.system && Math.abs(Math.hypot(n.x - s.x, n.z - s.z) - o.radius) < 0.5)
+        .map((n) => Math.atan2(n.z - s.z, n.x - s.x));
       for (let i = 0; i < SEGMENTS; i++) {
         for (const j of [i, i + 1]) {
           const a = (j / SEGMENTS) * Math.PI * 2;
           positions.set([s.x + Math.cos(a) * o.radius, s.y, s.z + Math.sin(a) * o.radius], k * 3);
           c.toArray(colors, k * 3);
+          let glow = 0;
+          for (const pa of planets) {
+            // Distância angular "atrás" do planeta (sentido de giro): a cauda vai até ~70°.
+            const behind = (((pa - a) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            const ahead = Math.PI * 2 - behind;
+            glow = Math.max(glow, Math.exp(-behind / 0.7), Math.exp(-ahead / 0.12));
+          }
+          near[k] = glow;
+          owner[k] = o.system;
           k++;
         }
       }
@@ -816,6 +859,21 @@ export class GalaxyScene {
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(positions, 3));
     geometry.setAttribute('color', new BufferAttribute(colors, 3));
+    if (this.profile.planetDetail > 0) {
+      geometry.setAttribute('aNear', new BufferAttribute(near, 1));
+      geometry.setAttribute('aSystem', new BufferAttribute(owner, 1));
+      const faded = new ShaderMaterial({
+        vertexShader: ORBIT_VERTEX,
+        fragmentShader: ORBIT_FRAGMENT,
+        uniforms: { uFocus: this.orbitFocus },
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+      });
+      this.content.add(new LineSegments(geometry, faded));
+      return;
+    }
     const material = new LineBasicMaterial({
       vertexColors: true,
       transparent: true,
@@ -1126,6 +1184,7 @@ export class GalaxyScene {
 
   private updateHighlight(): void {
     const focus = this.selected ?? this.hovered;
+    this.orbitFocus.value = focus !== null ? (this.layout.notes[focus]?.system ?? -1) : -1;
     const positions: number[] = [];
     if (focus !== null) {
       for (const [a, b] of this.graph.links) {
@@ -1308,6 +1367,7 @@ export class GalaxyScene {
     this.camera.updateProjectionMatrix();
     this.wake();
     this.haloMaterial.uniforms.scale!.value = h * this.renderer.getPixelRatio() * 0.6;
+    this.haloMaterial.uniforms.maxSize!.value = this.profile.planetDetail > 0 ? h * this.renderer.getPixelRatio() * 0.22 : 4096;
     this.planetBoost.uPxScale.value =
       (h * this.renderer.getPixelRatio()) / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     this.syncLook();

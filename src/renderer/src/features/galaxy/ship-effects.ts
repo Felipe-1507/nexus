@@ -13,6 +13,7 @@ import { haloBuffer, type Effect } from './effects';
 import type { GalaxyLayout } from './layout';
 import type { GalaxyProfile } from './quality';
 import { exhaust, Fleet, LIVERIES, MODEL_SCALE, type ShipModel } from './ship-models';
+import { TrailRibbon } from './trail-ribbon';
 
 /**
  * Naves ambientais (Galáxia Viva, G4): poucas naves cruzando a galáxia, ora visitando um sistema (dão algumas voltas em
@@ -121,7 +122,9 @@ export function createShips(
   const hulls = new InstancedMesh(geometry, new MeshBasicMaterial({ color: 0xffffff }), count);
   hulls.frustumCulled = false;
   if (detailed) hulls.count = 0;
-  const halo = haloBuffer(count * TR, material);
+  // Alta/Ultra: o rastro é uma fita contínua; nos outros modos, pontos de luz.
+  const ribbon = detailed ? new TrailRibbon(count, TR) : null;
+  const halo = haloBuffer(detailed ? 1 : count * TR, material);
   halo.points.frustumCulled = false;
   const engine = new Color('#9fd8ff');
   const tint = new Color();
@@ -132,8 +135,8 @@ export function createShips(
     if (!detailed) hulls.setColorAt(i, tint.set(hullColors[i % hullColors.length]!));
     const flame = detailed ? tint.set(LIVERIES[kinds[i]!.livery]!.engine) : engine;
     const size = detailed ? MODEL_SCALE[kinds[i]!.model] : 1;
-    for (let k = 0; k < TR; k++)
-      halo.set(i * TR + k, start, flame, (detailed ? 1.6 * size : 2.2) * (1 - k / TR) + 0.5, 0);
+    if (ribbon) ribbon.style(i, flame, 0.32 * size);
+    else for (let k = 0; k < TRAIL; k++) halo.set(i * TRAIL + k, start, flame, 2.2 * (1 - k / TRAIL) + 0.5, 0);
     const ship: Ship = {
       pos: start.clone(),
       dir: new Vector3(1, 0, 0),
@@ -232,6 +235,10 @@ export function createShips(
           ship.trail.unshift(tail.clone());
           if (ship.trail.length > TR) ship.trail.pop();
         }
+        if (ribbon) {
+          ribbon.set(i, [tail, ...ship.trail]);
+          return;
+        }
         for (let k = 0; k < TR; k++) {
           const p = k === 0 ? tail : ship.trail[k - 1];
           const slot = i * TR + k;
@@ -240,19 +247,18 @@ export function createShips(
             continue;
           }
           halo.positions.set([p.x, p.y, p.z], slot * 3);
-          halo.alphas[slot] = detailed
-            ? (k === 0 ? 0.9 : 0.35) * (1 - k / TR) ** 1.6
-            : (k === 0 ? 0.8 : 0.45) * (1 - k / TRAIL);
+          halo.alphas[slot] = (k === 0 ? 0.8 : 0.45) * (1 - k / TRAIL);
         }
       });
       hulls.instanceMatrix.needsUpdate = true;
       for (const fleet of fleets.values()) fleet.touch();
       halo.touch();
+      ribbon?.touch();
       return true;
     },
   };
   return {
-    objects: [hulls, halo.points, ...[...fleets.values()].flatMap((f) => f.objects)],
+    objects: [hulls, halo.points, ...(ribbon ? [ribbon.mesh] : []), ...[...fleets.values()].flatMap((f) => f.objects)],
     animator,
     setLayout(next) {
       current = next;

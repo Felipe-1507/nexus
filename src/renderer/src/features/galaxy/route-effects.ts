@@ -288,8 +288,10 @@ function createRealComets(
         const comet = comets[slot];
         if (!comet) continue;
         const t = Math.min(1, comet.t);
-        const fade = Math.min(1, t * 5, (1.05 - comet.t) * 6);
         bezier(p, comet, t);
+        // Mais brilhante perto do disco do centro (como um cometa perto do sol).
+        const heat = 1 + 1.3 * Math.exp(-Math.hypot(p.x, p.z) / (layout.sun.radius * 5));
+        const fade = Math.min(1, t * 5, (1.05 - comet.t) * 6) * heat;
         const dist = comet.from.distanceTo(comet.to);
         const len = Math.max(6, dist * 0.35);
         away.copy(p).setY(p.y * 0.3);
