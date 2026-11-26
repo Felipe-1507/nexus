@@ -184,6 +184,9 @@ export function createRayMarchedHole(options: {
     },
     transparent: true,
     depthWrite: false,
+    // Sem teste de profundidade: com a câmera perto, o quad podia ficar atrás da esfera preta e ela tampava o disco
+    // da frente. O próprio raio já decide o que fica na frente (disco) e atrás (sombra).
+    depthTest: false,
     // A luz do disco é emitida (soma); a opacidade só tampa o que está atrás (a sombra tampa tudo).
     blending: CustomBlending,
     blendSrc: OneFactor,

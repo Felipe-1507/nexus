@@ -62,8 +62,8 @@ const LENS = {
       float beta = rho > R ? rho - uRing * R * ((rho - R) / R) * pow(R / rho, 3.0) : rho;
       vec2 src = uLens.xy + (d / rho) * beta / vec2(uLens.w, 1.0);
       vec3 col = texture2D(tDiffuse, clamp(src * 0.5 + 0.5, 0.001, 0.999)).rgb;
-      // Depois do bloom: a sombra volta a ser preta de verdade (o brilho do disco não "vaza" para dentro).
-      col *= smoothstep(R * 0.86, R * 0.97, rho);
+      // A sombra não é escurecida aqui: o buraco negro com fótons já a desenha preta, e escurecer por cima apagava o
+      // disco que passa na frente dela.
       gl_FragColor = vec4(col, 1.0);
     }
   `,
