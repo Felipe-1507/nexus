@@ -113,3 +113,15 @@ describe('aviso de modelo novo', () => {
     ).toEqual(['haiku']);
   });
 });
+
+describe('withVersion', () => {
+  it('completa o nome do atalho com a versão do modelo resolvido', async () => {
+    const { withVersion } = await import('./model-catalog');
+    expect(withVersion('Opus', 'claude-opus-5-5')).toBe('Opus 5.5');
+    expect(withVersion('Sonnet', 'claude-sonnet-4-5-20250929')).toBe('Sonnet 4.5');
+    expect(withVersion('Opus', 'claude-opus-4-20250514')).toBe('Opus 4');
+    expect(withVersion('Opus 5.5', 'claude-opus-5-5')).toBe('Opus 5.5');
+    expect(withVersion('Opus', undefined)).toBe('Opus');
+    expect(withVersion('Default (recommended)', 'claude-opus-5-5')).toBe('Default (recommended)');
+  });
+});

@@ -17,6 +17,7 @@ import {
   Vector4,
   type Object3D,
 } from 'three';
+import { createRayMarchedHole } from './black-hole';
 import { seeded, haloBuffer } from './effects';
 import type { GalaxyProfile } from './quality';
 
@@ -248,6 +249,8 @@ export interface EclipseQuality {
   octaves: number;
   /** Segmentos do anel do disco. */
   segments: number;
+  /** Passos do raio de luz no buraco negro com fótons (0 = disco e arco à parte). */
+  rayMarch: number;
   /** Camadas de brilho em volta (1 a 3). */
   glowLayers: number;
 }
@@ -340,6 +343,15 @@ export function createEclipse(options: {
   for (let i = 0; i < quality.glowLayers; i++) glow.set(i, { x: 0, y: 0, z: 0 }, glowColor, sizes[i]!, alphas[i]!);
   glow.points.frustumCulled = false;
 
+  if (quality.rayMarch > 0) {
+    // Alta/Ultra: o disco, o arco e o anel saem do próprio raio de luz. A esfera preta fica só para tampar o que passa
+    // atrás (um pouco menor que a sombra aparente, que o shader desenha com a borda certa).
+    shadow.scale.setScalar(0.85);
+    disk.geometry.dispose();
+    arc.geometry.dispose();
+    const hole = createRayMarchedHole({ r0, tilt: TILT, steps: quality.rayMarch, octaves: quality.octaves, time, colors });
+    return [shadow, hole, dust, periphery, glow.points];
+  }
   return [shadow, disk, dust, periphery, arc, glow.points];
 }
 

@@ -14,13 +14,24 @@ const ALIAS_DESCRIPTIONS: Record<string, string> = {
 
 const TIMEOUT_MS = 30_000;
 
+/**
+ * Algumas versões do Claude Code mandam só "Opus"/"Sonnet" no nome do atalho. Nesse caso a versão vem do modelo
+ * resolvido (claude-opus-5-5 → "Opus 5.5"); nomes que já têm número ficam como estão.
+ */
+export function withVersion(displayName: string, resolvedModel: string | undefined | null): string {
+  if (/\d/.test(displayName) || !resolvedModel) return displayName;
+  const match = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-|$)/.exec(resolvedModel);
+  if (!match || match[1]!.toLowerCase() !== displayName.trim().toLowerCase()) return displayName;
+  return `${displayName.trim()} ${match[2]}${match[3] ? `.${match[3]}` : ''}`;
+}
+
 /** Converte a lista do Claude Code no catálogo do Nexus (atalhos primeiro, "default" à parte). */
 export function toCatalog(models: ModelInfo[]): ModelCatalog {
   const toOption = (m: ModelInfo): ModelOption => {
     const alias = !m.value.startsWith('claude-');
     return {
       value: m.value,
-      displayName: m.displayName,
+      displayName: withVersion(m.displayName, m.resolvedModel),
       description: alias ? (ALIAS_DESCRIPTIONS[m.value] ?? m.description) : '',
       resolvedModel: m.resolvedModel ?? null,
       efforts: (m.supportedEffortLevels ?? []).filter((e) => effortSchema.safeParse(e).success),

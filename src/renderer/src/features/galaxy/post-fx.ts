@@ -25,7 +25,8 @@ export interface PostFxSettings {
   grain: number;
   /** Separação de cores nas bordas, em fração da tela (0 = nenhuma). */
   chroma: number;
-  /** Força da lente gravitacional em tela (estilo Eclipse): quanto as estrelas perto da sombra se curvam. */
+  /** Força da lente gravitacional em tela (estilo Eclipse): quanto as estrelas perto da sombra se curvam. Abaixo de 1
+   * para não dobrar a imagem sobre si mesma (o disco já sai curvado do buraco negro com fótons). */
   lens: number;
 }
 

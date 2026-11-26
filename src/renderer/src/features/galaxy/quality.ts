@@ -32,7 +32,8 @@ export interface GalaxyProfile {
   shootingStarEverySec: number;
   cometEverySec: number;
   /** Núcleo Eclipse (estilo "Eclipse"): grãos de poeira, camadas de ruído do disco e segmentos do anel. */
-  eclipse: { dust: number; periphery: number; octaves: number; segments: number; lensStars: number };
+  eclipse: { dust: number; periphery: number; octaves: number; segments: number; lensStars: number; rayMarch: number };
+  /* rayMarch: passos do raio de luz no buraco negro com fótons (0 = disco e arco desenhados à parte, como antes). */
   /** Pós-processamento (bloom, cor de cinema, vinheta, grão). null = desenho direto. */
   post: PostFxSettings | null;
   /** Detalhe dos planetas: 0 = como sempre, 1 = Alta (relevo, terminador, dispersão), 2 = Ultra (mais relevo e ruído). */
@@ -66,7 +67,7 @@ const BASE: Record<'original' | 'leve', GalaxyProfile> = {
     rim: 1,
     post: null,
     planetDetail: 0,
-    eclipse: { dust: 2600, periphery: 1400, octaves: 3, segments: 128, lensStars: 7000 },
+    eclipse: { dust: 2600, periphery: 1400, octaves: 3, segments: 128, lensStars: 7000, rayMarch: 0 },
     shootingStarEverySec: 12,
     cometEverySec: 9,
     limits: {
@@ -92,7 +93,7 @@ const BASE: Record<'original' | 'leve', GalaxyProfile> = {
     rim: 0.6,
     post: null,
     planetDetail: 0,
-    eclipse: { dust: 700, periphery: 320, octaves: 2, segments: 64, lensStars: 2200 },
+    eclipse: { dust: 700, periphery: 320, octaves: 2, segments: 64, lensStars: 2200, rayMarch: 0 },
     shootingStarEverySec: 30,
     cometEverySec: 22,
     limits: {
@@ -112,6 +113,7 @@ const ALTA: GalaxyProfile = {
   ...BASE.original,
   quality: 'alta',
   limits: { ...BASE.original.limits, ambientShips: 4 },
+  eclipse: { ...BASE.original.eclipse, rayMarch: 90 },
   planetDetail: 1,
   post: {
     bloom: { strength: 0.45, radius: 0.4, threshold: 0.85 },
@@ -119,7 +121,7 @@ const ALTA: GalaxyProfile = {
     vignette: 0.45,
     grain: 0.012,
     chroma: 0,
-    lens: 1.2,
+    lens: 0.55,
   },
 };
 
@@ -131,7 +133,7 @@ const ULTRA: GalaxyProfile = {
   backgroundStars: 6000,
   nearStars: 3000,
   rim: 1.15,
-  eclipse: { dust: 3800, periphery: 2000, octaves: 4, segments: 192, lensStars: 14000 },
+  eclipse: { dust: 3800, periphery: 2000, octaves: 4, segments: 192, lensStars: 14000, rayMarch: 160 },
   shootingStarEverySec: 8,
   cometEverySec: 7,
   post: {
@@ -140,7 +142,7 @@ const ULTRA: GalaxyProfile = {
     vignette: 0.6,
     grain: 0.015,
     chroma: 0.004,
-    lens: 1.6,
+    lens: 0.7,
   },
   limits: { ...BASE.original.limits, ambientShips: 5, comets: 4, pulses: 40 },
 };
