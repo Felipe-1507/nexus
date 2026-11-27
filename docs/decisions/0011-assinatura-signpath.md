@@ -18,6 +18,8 @@
   - tag `vX.Y.Z` (igual à versão do `package.json`): política `release-signing`, com aprovação manual no SignPath, e
     um release no GitHub com o instalador assinado e o `nexus-update.json`;
   - execução manual: política `test-signing`, sem publicar.
+  - sem o secret `SIGNPATH_API_TOKEN` (antes da aprovação), a assinatura é pulada e o release sai com o instalador
+    sem assinatura, para o download já funcionar.
 - O `nexus-update.json` é calculado depois da assinatura: assinar muda o arquivo e, com ele, o SHA-512.
 - Só o instalador NSIS é assinado (`.signpath/artifact-configuration.xml`). O `.exe` do app dentro dele fica sem
   assinatura; o SmartScreen confere o arquivo baixado.

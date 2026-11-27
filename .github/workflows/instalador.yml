@@ -4,6 +4,7 @@
 # - Tag "v1.2.3": confere a versão, gera, assina com a política "release-signing" (cada pedido precisa ser aprovado no
 #   SignPath) e publica um release com o instalador assinado e o nexus-update.json da atualização automática.
 # - Rodar à mão (workflow_dispatch): gera e assina com "test-signing" (certificado de teste), sem publicar nada.
+# - Sem o secret SIGNPATH_API_TOKEN, o passo da assinatura é pulado e o release sai com o instalador sem assinatura.
 #
 # Configuração no GitHub (Settings → Secrets and variables → Actions):
 #   secret   SIGNPATH_API_TOKEN        token de um usuário "CI" do SignPath com permissão de enviar pedidos
@@ -56,8 +57,20 @@ jobs:
       - name: Gerar o instalador
         run: npm run dist
 
+      - name: O SignPath está configurado?
+        id: signpath
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SIGNPATH_API_TOKEN não configurado: o instalador sai sem assinatura."
+          fi
+
       - name: Enviar o instalador sem assinatura
         id: unsigned
+        if: steps.signpath.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: instalador-sem-assinatura
@@ -66,6 +79,7 @@ jobs:
           retention-days: 3
 
       - name: Assinar no SignPath
+        if: steps.signpath.outputs.enabled == 'true'
         uses: signpath/github-action-submit-signing-request@v1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -82,8 +96,10 @@ jobs:
       - name: Trocar pelo instalador assinado e montar a publicação
         shell: bash
         run: |
-          signed=$(ls assinado/*-instalador.exe)
-          cp -f "$signed" "release/$(basename "$signed")"
+          if [ "${{ steps.signpath.outputs.enabled }}" = "true" ]; then
+            signed=$(ls assinado/*-instalador.exe)
+            cp -f "$signed" "release/$(basename "$signed")"
+          fi
           # Mesmo formato de "npm run publish:update": instalador + nexus-update.json com o SHA-512 do arquivo assinado.
           node scripts/publish-update.mjs publicacao
           ls -l publicacao
@@ -91,7 +107,7 @@ jobs:
       - name: Guardar o resultado
         uses: actions/upload-artifact@v4
         with:
-          name: instalador-assinado
+          name: instalador
           path: publicacao/*
           if-no-files-found: error
 
@@ -100,7 +116,11 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.signpath.outputs.enabled }}
         run: |
-          gh release create "$GITHUB_REF_NAME" publicacao/* \
-            --title "Nexus $GITHUB_REF_NAME" \
-            --notes "Instalador para Windows 10 e 11, assinado. Free code signing provided by SignPath.io, certificate by SignPath Foundation."
+          if [ "$SIGNED" = "true" ]; then
+            notes="Instalador para Windows 10 e 11, assinado. Free code signing provided by SignPath.io, certificate by SignPath Foundation."
+          else
+            notes="Instalador para Windows 10 e 11, ainda sem assinatura: o Windows pode mostrar o aviso 'O Windows protegeu o computador'. Clique em Mais informações e depois em Executar assim mesmo."
+          fi
+          gh release create "$GITHUB_REF_NAME" publicacao/* --title "Nexus $GITHUB_REF_NAME" --notes "$notes"
