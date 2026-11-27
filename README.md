@@ -44,6 +44,16 @@ npm run dist              # gera o instalador em release\
 
 Terminais abertos pelo VS Code ou pelo Claude Code podem herdar `ELECTRON_RUN_AS_NODE=1`; para o `npm run dev`, use um terminal limpo.
 
+### Publicar uma versão assinada
+
+O instalador é gerado e assinado pelo GitHub Actions ([.github/workflows/instalador.yml](.github/workflows/instalador.yml)):
+suba a versão no `package.json`, faça o commit e crie a tag `vX.Y.Z`. O pedido de assinatura chega no SignPath para
+ser aprovado, e o release sai com o instalador assinado e o `nexus-update.json`. Detalhes em
+[ADR 0011](docs/decisions/0011-assinatura-signpath.md) e na [política de assinatura](CODE_SIGNING_POLICY.md).
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
 Para mais detalhes:
 
 - [PROJECT_BRIEF.md](PROJECT_BRIEF.md): visão do produto.

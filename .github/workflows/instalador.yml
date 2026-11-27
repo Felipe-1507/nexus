@@ -1,0 +1,106 @@
+# Gera o instalador no GitHub Actions e assina pelo SignPath (certificado da SignPath Foundation, grátis para código
+# aberto). Veja docs/decisions/0011-assinatura-signpath.md e CODE_SIGNING_POLICY.md.
+#
+# - Tag "v1.2.3": confere a versão, gera, assina com a política "release-signing" (cada pedido precisa ser aprovado no
+#   SignPath) e publica um release com o instalador assinado e o nexus-update.json da atualização automática.
+# - Rodar à mão (workflow_dispatch): gera e assina com "test-signing" (certificado de teste), sem publicar nada.
+#
+# Configuração no GitHub (Settings → Secrets and variables → Actions):
+#   secret   SIGNPATH_API_TOKEN        token de um usuário "CI" do SignPath com permissão de enviar pedidos
+#   variable SIGNPATH_ORGANIZATION_ID  identificador da organização no SignPath
+
+name: Instalador assinado
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # criar o release
+  actions: read # o SignPath baixa o artefato sem assinatura deste run
+
+concurrency:
+  group: instalador-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: A tag bate com a versão do package.json
+        if: env.RELEASE == 'true'
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::A tag $GITHUB_REF_NAME não bate com a versão $version do package.json"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Tipos, lint e testes
+        run: npm run check
+
+      - name: Gerar o instalador
+        run: npm run dist
+
+      - name: Enviar o instalador sem assinatura
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador-sem-assinatura
+          path: release/*-instalador.exe
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Assinar no SignPath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: nexus
+          signing-policy-slug: ${{ env.RELEASE == 'true' && 'release-signing' || 'test-signing' }}
+          artifact-configuration-slug: instalador
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # A assinatura de release espera a aprovação manual no SignPath: até 1 hora.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: assinado
+
+      - name: Trocar pelo instalador assinado e montar a publicação
+        shell: bash
+        run: |
+          signed=$(ls assinado/*-instalador.exe)
+          cp -f "$signed" "release/$(basename "$signed")"
+          # Mesmo formato de "npm run publish:update": instalador + nexus-update.json com o SHA-512 do arquivo assinado.
+          node scripts/publish-update.mjs publicacao
+          ls -l publicacao
+
+      - name: Guardar o resultado
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador-assinado
+          path: publicacao/*
+          if-no-files-found: error
+
+      - name: Publicar o release
+        if: env.RELEASE == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" publicacao/* \
+            --title "Nexus $GITHUB_REF_NAME" \
+            --notes "Instalador para Windows 10 e 11, assinado. Free code signing provided by SignPath.io, certificate by SignPath Foundation."

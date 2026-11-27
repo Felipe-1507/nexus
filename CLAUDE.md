@@ -12,6 +12,7 @@ Aplicativo desktop (Electron) de uso pessoal: segundo cérebro em Markdown + cha
 - `npm run test:e2e`: compila e roda os testes Playwright contra o app real, com os dados numa pasta temporária (`NEXUS_USER_DATA_DIR`).
 - `npm run dist`: gera o instalador NSIS em `release/` ([ADR 0008](docs/decisions/0008-instalador-e-empacotamento.md)). O nome do app vem da marca: "Nexus" por padrão, ou a pasta `branding.local/`, que fica fora do git ([ADR 0009](docs/decisions/0009-marca-configuravel.md)).
 - `npm run test:packaged`: gera o pacote e testa o `.exe` empacotado, com dados numa pasta temporária. A conversa real só roda com `NEXUS_LIVE_TESTS=1`. Antes de publicar uma versão, siga também o [roteiro manual](docs/ROTEIRO-INSTALADOR.md).
+- Versão assinada: o GitHub Actions gera e manda assinar no SignPath ao receber a tag `vX.Y.Z` (`.github/workflows/instalador.yml`, [ADR 0011](docs/decisions/0011-assinatura-signpath.md)). Nunca assine nem guarde certificado ou token do SignPath no código.
 - O binário do Electron não vem com o `npm install`. Numa máquina nova, rode `npx install-electron`.
 - Terminais abertos pelo VS Code ou pelo Claude Code podem herdar `ELECTRON_RUN_AS_NODE=1`, que faz o Electron rodar como Node puro. Os testes E2E removem essa variável; para o `npm run dev`, use um terminal limpo.
 

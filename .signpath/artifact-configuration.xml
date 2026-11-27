@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Configuração de artefato do SignPath (slug "instalador"). Cole este conteúdo em
+  SignPath → Projeto "nexus" → Artifact configurations → "instalador".
+  O artefato que o GitHub Actions envia é um .zip com o instalador NSIS na raiz; só ele é assinado.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="*-instalador.exe">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
