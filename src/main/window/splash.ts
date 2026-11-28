@@ -4,8 +4,8 @@ import { app, BrowserWindow } from 'electron';
 
 /** Tempo mínimo da abertura animada em SVG: o bastante para formar o logo, sem atrasar quem só quer trabalhar. */
 export const SPLASH_MIN_MS = 2_000;
-/** Duração do vídeo de abertura (build/intro/intro.webm): a janela só some depois dele, e ele fica no último quadro. */
-export const INTRO_VIDEO_MS = 4_100;
+/** Duração da abertura da marca (build/intro/splash.html): a janela só some depois dela, e ela fica no último quadro. */
+export const INTRO_MS = 2_600;
 const FADE_MS = 160;
 
 const HEX = /^#[0-9a-f]{6}/i;
@@ -99,17 +99,19 @@ export function splashHtml({ accent, name }: { accent: string; name: string }): 
 </body></html>`;
 }
 
-/** Pasta do vídeo de abertura: ao lado do projeto em desenvolvimento, em `resources/intro` no app instalado. */
+/** Pasta da abertura da marca: ao lado do projeto em desenvolvimento, em `resources/intro` no app instalado. */
 export function introDir(): string {
   return app.isPackaged ? path.join(process.resourcesPath, 'intro') : path.join(app.getAppPath(), 'build', 'intro');
 }
 
-/** Página do vídeo, se ele existir e a marca for a padrão (o vídeo traz o nome "Nexus" desenhado). */
-export function introVideoPage(isDefaultBrand: boolean): string | null {
+/**
+ * Página da abertura da marca (a logo do Nexus se montando, em SVG e CSS, sem script), se ela existir e a marca for a
+ * padrão: a página traz a logo e o nome "Nexus" desenhados.
+ */
+export function introPage(isDefaultBrand: boolean): string | null {
   if (!isDefaultBrand) return null;
-  const dir = introDir();
-  const page = path.join(dir, 'splash.html');
-  return fs.existsSync(page) && fs.existsSync(path.join(dir, 'intro.webm')) ? page : null;
+  const page = path.join(introDir(), 'splash.html');
+  return fs.existsSync(page) ? page : null;
 }
 
 export interface Splash {
@@ -127,7 +129,7 @@ export function openSplash({
   accent: string;
   name: string;
   icon?: string | null;
-  /** Página HTML do vídeo de abertura; sem ela, vale a animação em SVG. */
+  /** Página HTML da abertura da marca; sem ela, vale a animação genérica em SVG (outras marcas). */
   video?: string | null;
 }): Splash {
   const win = new BrowserWindow({
@@ -161,7 +163,7 @@ export function openSplash({
   });
   if (video) void win.loadFile(video);
   else void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml({ accent, name }))}`);
-  const minMs = video ? INTRO_VIDEO_MS : SPLASH_MIN_MS;
+  const minMs = video ? INTRO_MS : SPLASH_MIN_MS;
 
   const close = () => {
     if (win.isDestroyed()) return;

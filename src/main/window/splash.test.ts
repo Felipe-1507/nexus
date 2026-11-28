@@ -28,25 +28,19 @@ describe('abertura animada', () => {
   });
 });
 
-describe('vídeo de abertura', () => {
+describe('abertura da marca', () => {
   const dir = path.resolve('build', 'intro');
 
-  it('a página e o vídeo existem, a página toca o vídeo sem script e o CSP libera só mídia local', () => {
-    expect(fs.statSync(path.join(dir, 'intro.webm')).size).toBeGreaterThan(10_000);
+  it('a página desenha a logo e o nome só com SVG e CSS: sem script, sem vídeo e com CSP que bloqueia o resto', () => {
     const html = fs.readFileSync(path.join(dir, 'splash.html'), 'utf8');
-    expect(html).not.toMatch(/<script/i);
-    expect(html).toContain('src="intro.webm"');
-    expect(html).toMatch(/autoplay/);
-    expect(html).toContain("default-src 'none'; media-src file:");
+    expect(html).not.toMatch(/<script|<video|<img/i);
+    expect(html).toContain("default-src 'none'; style-src 'unsafe-inline'");
+    expect(html).toMatch(/<svg[^>]+viewBox="0 0 1000 1000"/);
+    expect(html).toContain('>Nexus</text>');
+    expect(html).toContain('prefers-reduced-motion');
   });
 
-  it('o instalador leva a pasta do vídeo fora do ASAR', () => {
+  it('o instalador leva a pasta da abertura fora do ASAR', () => {
     expect(fs.readFileSync('electron-builder.config.mjs', 'utf8')).toMatch(/from: 'build\/intro', to: 'intro'/);
   });
-});
-
-it('a página do vídeo esconde os controles do player (aparecem sozinhos sem JavaScript)', () => {
-  const html = fs.readFileSync(path.join('build', 'intro', 'splash.html'), 'utf8');
-  expect(html).toContain('::-webkit-media-controls');
-  expect(html).toContain('pointer-events: none');
 });

@@ -88,7 +88,7 @@ import { startMarker, takePreviousMarker } from './platform/run-marker';
 import { createWatcher } from './fs/watcher';
 import { createBackgroundMode, type BackgroundMode } from './window/background';
 import { createMainWindow } from './window/main-window';
-import { introVideoPage, openSplash, type Splash } from './window/splash';
+import { introPage, openSplash, type Splash } from './window/splash';
 import { createOriginGuard } from './window/origin';
 import { watchWindowHealth } from './window/recovery';
 import { APP_ORIGIN, handleAppProtocol, registerAppScheme } from './window/protocol';
@@ -200,7 +200,7 @@ function bootstrap(): void {
           name: BRAND.productName,
           icon: BRAND.icon,
           // O vídeo traz o nome "Nexus" desenhado: só vale para a marca padrão.
-          video: introVideoPage(BRAND.productName === 'Nexus'),
+          video: introPage(BRAND.productName === 'Nexus'),
         });
 
   const db = database;
