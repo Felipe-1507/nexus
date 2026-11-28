@@ -19,7 +19,7 @@ describe('abertura animada', () => {
   });
 
   it('cor inválida volta para a padrão', () => {
-    expect(splashHtml({ accent: 'red;}</style>', name: 'Nexus' })).toContain('stroke="#8b7dff"');
+    expect(splashHtml({ accent: 'red;}</style>', name: 'Nexus' })).toContain('stroke="#ff4560"');
   });
 
   it('mistura cores', () => {

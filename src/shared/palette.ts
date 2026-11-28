@@ -44,10 +44,11 @@ export const DEFAULT_PALETTE: Palette = {
     border: '#e3e3ec',
     text: '#16161d',
     'text-muted': '#6b6b7b',
-    accent: '#6d5cff',
-    'accent-soft': '#6d5cff1f',
+    // Vermelho da logo. O perigo (excluir, erro) puxa para o laranja, para não se confundir com o destaque.
+    accent: '#e0193f',
+    'accent-soft': '#e0193f1f',
     ok: '#1f9d55',
-    danger: '#d64545',
+    danger: '#d9480f',
   },
   dark: {
     bg: '#0b0b12',
@@ -57,10 +58,10 @@ export const DEFAULT_PALETTE: Palette = {
     border: '#23232f',
     text: '#ececf3',
     'text-muted': '#8d8da3',
-    accent: '#8b7dff',
-    'accent-soft': '#8b7dff26',
+    accent: '#ff4560',
+    'accent-soft': '#ff456026',
     ok: '#3ccf7c',
-    danger: '#ff6b6b',
+    danger: '#ff8a4c',
   },
   galaxy: ['#ffe3a3', '#8b7dff', '#5cc8ff', '#ff7ac6', '#ffc25c', '#6ee7a8', '#ff8a65', '#7aa2ff', '#c792ea'],
 };
@@ -135,6 +136,7 @@ export const DARK_VARIANT_IDS = Object.keys(DARK_VARIANTS) as [DarkVariant, ...D
 /** Cores de destaque prontas. `null` = a da marca (ou a do Nexus). */
 export const ACCENT_PRESETS: Array<{ label: string; hex: string | null }> = [
   { label: 'Padrão', hex: null },
+  { label: 'Violeta', hex: '#8b7dff' },
   { label: 'Azul', hex: '#4f8cff' },
   { label: 'Turquesa', hex: '#2dd4bf' },
   { label: 'Verde', hex: '#34d399' },

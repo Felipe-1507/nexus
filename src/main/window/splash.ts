@@ -31,7 +31,7 @@ const escapeHtml = (s: string) =>
  * e o nome aparece. Só HTML e CSS, sem nenhum script. Com "reduzir movimento" do Windows, mostra direto o logo pronto.
  */
 export function splashHtml({ accent, name }: { accent: string; name: string }): string {
-  const a = HEX.test(accent) ? accent.slice(0, 7) : '#8b7dff';
+  const a = HEX.test(accent) ? accent.slice(0, 7) : '#ff4560';
   const light = mixHex(a, '#ffffff', 0.55);
   const pale = mixHex(a, '#ffffff', 0.8);
   return `<!doctype html>
