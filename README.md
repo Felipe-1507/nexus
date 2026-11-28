@@ -7,7 +7,7 @@ Aplicativo de mesa para Windows que junta, numa janela só:
 - **Código**: árvore de pastas dos projetos, visualizador, edição pequena e diff do que o Claude alterou. Dá para colar, soltar e excluir arquivos pela árvore.
 - **Gerenciador de contexto**: mostra quanto cada conversa pesa e ajuda a continuar numa conversa nova sem perder o fio.
 
-Tudo fica no seu computador. Nada do que você escreve passa por servidores do Nexus: o app só conversa com o Claude Code instalado na sua máquina.
+Suas notas e conversas ficam no seu computador. O que você manda no chat vai para a Anthropic pelo Claude Code instalado na sua máquina, com a sua própria conta. O Nexus não tem servidor próprio nem telemetria.
 
 ## Para usar
 
