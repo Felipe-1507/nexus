@@ -1,0 +1,22 @@
+﻿Nexus: privacidade e licença
+
+Leia antes de instalar.
+
+PRIVACIDADE
+
+- O Nexus conversa com o Claude pelo Claude Code instalado neste computador, com a sua conta. O que você escreve no chat, e o conteúdo das notas e arquivos que o Claude abrir para responder, vai para a Anthropic, conforme os termos da sua conta.
+- O Nexus não tem servidor próprio, telemetria, rastreamento nem anúncios. Conversas, notas e configurações ficam neste computador.
+- Tela de boas-vindas (opcional): pode pedir ao Claude um resumo do dia, com os títulos de commits, notas e conversas do período. Dá para desligar em Configurações → Boas-vindas.
+- Versão do Claude Code: o Nexus consulta o registro público do npm para avisar de versão nova. Dá para desligar em Configurações → Privacidade.
+- Atualizações do Nexus: só se você configurar uma pasta ou endereço em Configurações → Atualizações.
+- Extensões (MCP e plugins): conversam só com os serviços que você mesmo configurar no Claude Code.
+
+O Nexus é instalado só para o seu usuário, sem pedir administrador, e não muda configurações do sistema. Para remover, use "Adicionar ou remover programas" do Windows. Desinstalar não apaga suas conversas, notas e configurações.
+
+LICENÇA
+
+O Nexus é software livre, sob a licença MIT (arquivo LICENSE no repositório https://github.com/Felipe-1507/nexus). É fornecido "no estado em que se encontra", sem garantia de nenhum tipo.
+
+O instalador inclui o Electron e outras bibliotecas de código aberto, cada uma com a sua licença, e o SDK do Claude Code (@anthropic-ai/claude-agent-sdk), da Anthropic, que segue os termos da Anthropic. O Claude Code em si não vem no instalador.
+
+Política de assinatura de código (code signing policy): https://github.com/Felipe-1507/nexus/blob/main/CODE_SIGNING_POLICY.md

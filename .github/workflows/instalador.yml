@@ -54,6 +54,11 @@ jobs:
       - name: Tipos, lint e testes
         run: npm run check
 
+      - name: Versão
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Gerar o instalador
         # Numa tag, o electron-builder tentaria publicar sozinho no GitHub (e pediria GH_TOKEN). Quem publica aqui é o
         # passo "Publicar o release", depois da assinatura.
@@ -82,7 +87,7 @@ jobs:
 
       - name: Assinar no SignPath
         if: steps.signpath.outputs.enabled == 'true'
-        uses: signpath/github-action-submit-signing-request@v1
+        uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -94,6 +99,9 @@ jobs:
           # A assinatura de release espera a aprovação manual no SignPath: até 1 hora.
           wait-for-completion-timeout-in-seconds: 3600
           output-artifact-directory: assinado
+          # Confere no SignPath o nome e a versão gravados no instalador (.signpath/artifact-configuration.xml).
+          parameters: |
+            version: ${{ toJSON(steps.version.outputs.version) }}
 
       - name: Trocar pelo instalador assinado e montar a publicação
         shell: bash
@@ -125,4 +133,7 @@ jobs:
           else
             notes="Instalador para Windows 10 e 11, ainda sem assinatura: o Windows pode mostrar o aviso 'O Windows protegeu o computador'. Clique em Mais informações e depois em Executar assim mesmo."
           fi
-          gh release create "$GITHUB_REF_NAME" publicacao/* --title "Nexus $GITHUB_REF_NAME" --notes "$notes"
+          policy="Code signing policy: https://github.com/$GITHUB_REPOSITORY/blob/main/CODE_SIGNING_POLICY.md"
+          gh release create "$GITHUB_REF_NAME" publicacao/* --title "Nexus $GITHUB_REF_NAME" --notes "$notes
+
+          $policy"

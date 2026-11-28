@@ -5,6 +5,7 @@ export const IPC_CHANNELS = [
   'app:reportError',
   'privacy:get',
   'privacy:accept',
+  'privacy:set',
   'preferences:get',
   'preferences:setTheme',
   'galaxy:getQuality',

@@ -81,7 +81,7 @@ import { registerIpc } from './ipc/register';
 import { backupDatabase, openDatabase, type Database } from './persistence/db';
 import { configureLogger, log } from './platform/logger';
 import { resolveAppPaths } from './platform/paths';
-import { loadPreferences } from './platform/preferences';
+import { loadPreferences, type Preferences } from './platform/preferences';
 import { PreferencesStore } from './platform/preferences-store';
 import { runFile } from './platform/run';
 import { startMarker, takePreviousMarker } from './platform/run-marker';
@@ -133,6 +133,11 @@ let codeWatcher: CodeWatcher | undefined;
 let mainWindow: BrowserWindow | undefined;
 let background: BackgroundMode | undefined;
 let runMarker: { stop: () => void } | undefined;
+
+/** O que a tela de privacidade mostra e controla. */
+function privacyView(p: Preferences): { acceptedAt: string | null; claudeUpdateCheck: boolean } {
+  return { acceptedAt: p.privacyAcceptedAt, claudeUpdateCheck: p.claudeUpdateCheck };
+}
 
 function bootstrap(): void {
   const userData = app.getPath('userData');
@@ -427,11 +432,12 @@ function bootstrap(): void {
           const next = prefs.update(patch);
           return { darkVariant: next.darkVariant, accent: next.accent };
         },
-        'privacy:get': () => ({ acceptedAt: prefs.get().privacyAcceptedAt }),
+        'privacy:get': () => privacyView(prefs.get()),
         'privacy:accept': () => {
           const acceptedAt = prefs.get().privacyAcceptedAt ?? new Date().toISOString();
-          return { acceptedAt: prefs.update({ privacyAcceptedAt: acceptedAt }).privacyAcceptedAt };
+          return privacyView(prefs.update({ privacyAcceptedAt: acceptedAt }));
         },
+        'privacy:set': ({ claudeUpdateCheck }) => privacyView(prefs.update({ claudeUpdateCheck })),
         'app:reportError': ({ source, message, stack }) => {
           log.error(`Erro na interface (${source}): ${message}`, stack ?? '');
           return null;
@@ -441,7 +447,10 @@ function bootstrap(): void {
         'claude:install': () => openSetupConsole('o instalador do Claude Code', installCommand()),
         'claude:updateCheck': async ({ refresh }) => {
           const status = await claude.get();
-          return claudeUpdates.check(status.cli.state === 'found' ? status.cli.version : null, refresh);
+          const current = status.cli.state === 'found' ? status.cli.version : null;
+          // Desligado em Configurações → Privacidade: nada é pedido à internet.
+          if (!prefs.get().claudeUpdateCheck) return { current, latest: null, available: false };
+          return claudeUpdates.check(current, refresh);
         },
         'claude:update': async () => {
           const status = await claude.get();

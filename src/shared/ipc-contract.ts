@@ -112,8 +112,11 @@ export type GalaxyLook = z.infer<typeof galaxyLookSchema>;
 export const openablePathSchema = z.enum(['userData', 'logs']);
 export type OpenablePath = z.infer<typeof openablePathSchema>;
 
-/** Aviso de privacidade: `acceptedAt` fica nulo até o usuário confirmar a leitura (na primeira execução). */
-export const privacySchema = z.object({ acceptedAt: z.string().nullable() });
+/**
+ * Aviso de privacidade: `acceptedAt` fica nulo até o usuário confirmar a leitura (na primeira execução).
+ * `claudeUpdateCheck`: se o Nexus consulta o registro do npm para avisar de versão nova do Claude Code.
+ */
+export const privacySchema = z.object({ acceptedAt: z.string().nullable(), claudeUpdateCheck: z.boolean() });
 export type Privacy = z.infer<typeof privacySchema>;
 
 /** Erro da interface enviado para o log do main (o renderer não grava arquivos). */
@@ -134,6 +137,7 @@ export const ipcContract = {
   'app:reportError': { input: rendererErrorSchema, output: z.null() },
   'privacy:get': { input: z.undefined(), output: privacySchema },
   'privacy:accept': { input: z.undefined(), output: privacySchema },
+  'privacy:set': { input: z.object({ claudeUpdateCheck: z.boolean() }), output: privacySchema },
   'preferences:get': { input: z.undefined(), output: preferencesViewSchema },
   'preferences:setTheme': { input: themeSchema, output: preferencesViewSchema },
   'galaxy:getQuality': { input: z.undefined(), output: z.object({ quality: galaxyQualitySchema }) },

@@ -62,6 +62,9 @@ export default {
     shortcutName: branding.productName,
     // Desinstalar não apaga conversas, notas nem configurações.
     deleteAppDataOnUninstall: false,
+    // Página "privacidade e licença" antes da instalação: a política do SignPath pede que o aviso de privacidade apareça
+    // ao instalar (CODE_SIGNING_POLICY.md).
+    license: 'build/instalador-aviso.txt',
     installerLanguages: ['pt_BR'],
     language: '1046',
   },

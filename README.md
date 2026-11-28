@@ -27,6 +27,14 @@ Onde ficam os dados:
 | Notas e instruções dos Workspaces | `%USERPROFILE%\Nexus` |
 | Sessões do Claude Code | `%USERPROFILE%\.claude` |
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+Quem escreve, revisa e aprova as assinaturas, o que é assinado e o que o app envia pela rede:
+[política de assinatura de código (code signing policy)](CODE_SIGNING_POLICY.md).
+
 ## Para desenvolver
 
 Precisa de Git, Node.js 24 e o Claude Code instalado.
@@ -51,8 +59,6 @@ suba a versão no `package.json`, faça o commit e crie a tag `vX.Y.Z`. O pedido
 ser aprovado, e o release sai com o instalador assinado e o `nexus-update.json`. Detalhes em
 [ADR 0011](docs/decisions/0011-assinatura-signpath.md) e na [política de assinatura](CODE_SIGNING_POLICY.md).
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
-[SignPath Foundation](https://signpath.org/).
 
 Para mais detalhes:
 

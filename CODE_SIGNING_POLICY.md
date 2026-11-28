@@ -31,10 +31,12 @@ ela mesma o configura para isso:
 - **Tela de boas-vindas (opcional):** com a opção ligada, os títulos de commits, notas e conversas do período vão para
   o Claude, que os reescreve em uma ou duas frases. Dá para desligar em Configurações → Boas-vindas.
 - **Versão do Claude Code:** o Nexus consulta o registro público do npm para saber se há versão nova do Claude Code.
+  Dá para desligar em Configurações → Privacidade.
 - **Atualização do Nexus:** só se você configurar uma pasta ou endereço em Configurações → Atualizações.
 - **Extensões (MCP e plugins):** conversam com os serviços que você mesmo configurar no Claude Code.
 
-Não há telemetria, rastreamento nem anúncios. Conversas, notas e configurações ficam no seu computador.
+Não há telemetria, rastreamento nem anúncios. Conversas, notas e configurações ficam no seu computador. Este aviso
+aparece no instalador, antes de instalar, e na primeira abertura do app (também em Configurações → Privacidade).
 
 ---
 
@@ -50,5 +52,6 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 - **Privacy:** this program will not transfer any information to other networked systems unless specifically requested
   by the user or the person installing or operating it. Chat messages go to Anthropic through the user's own Claude Code
   installation and account; the optional welcome summary sends commit, note and conversation titles to Claude; the app
-  checks the public npm registry for new Claude Code versions; app updates and MCP servers only contact locations the
-  user configures. There is no telemetry.
+  checks the public npm registry for new Claude Code versions (can be turned off in Settings → Privacy); app updates and MCP servers only contact locations the
+  user configures. There is no telemetry. This notice is
+  shown by the installer before installation and when the app first opens.

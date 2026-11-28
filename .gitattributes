@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.png binary
 *.ico binary
+# Página do instalador (NSIS): fica com CRLF, como no Windows.
+build/instalador-aviso.txt text eol=crlf

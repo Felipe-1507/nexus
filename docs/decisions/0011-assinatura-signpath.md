@@ -23,6 +23,11 @@
 - O `nexus-update.json` é calculado depois da assinatura: assinar muda o arquivo e, com ele, o SHA-512.
 - Só o instalador NSIS é assinado (`.signpath/artifact-configuration.xml`). O `.exe` do app dentro dele fica sem
   assinatura; o SmartScreen confere o arquivo baixado.
+- A configuração de artefato restringe os metadados: só assina um `Nexus-<versão>-instalador.exe` com nome de produto
+  "Nexus" e versão igual à do `package.json` (parâmetro `version`, enviado pelo workflow).
+- O instalador mostra uma página "privacidade e licença" antes de instalar (`build/instalador-aviso.txt`), e a única
+  ida à internet que o usuário não pede (a consulta de versão do Claude Code no npm) pode ser desligada em
+  Configurações → Privacidade: as regras do SignPath pedem as duas coisas.
 - Política pública de assinatura, com equipe e privacidade: [CODE_SIGNING_POLICY.md](../../CODE_SIGNING_POLICY.md).
   A frase "Free code signing provided by SignPath.io, certificate by SignPath Foundation" aparece no README, no
   release e no site.

@@ -29,6 +29,7 @@ describe('preferências', () => {
         welcomeAi: true,
         welcomeName: null,
         welcomeLastAt: null,
+        claudeUpdateCheck: true,
         updateSource: null,
         accent: null,
       },
@@ -49,6 +50,7 @@ describe('preferências', () => {
       welcomeAi: false,
       welcomeName: 'Ana',
       welcomeLastAt: '2026-11-18T12:00:00.000Z',
+      claudeUpdateCheck: false,
       updateSource: '\\\\servidor\\versoes',
       accent: '#4f8cff',
     };

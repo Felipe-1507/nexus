@@ -7,7 +7,7 @@ import { IconButton } from '@renderer/components/ui/IconButton';
 import { useLayout } from '@renderer/app/shell/layout-store';
 import { ClaudeStatusPanel } from '@renderer/features/claude/ClaudeStatusPanel';
 import { ThresholdsSection } from '@renderer/features/context/ThresholdsSection';
-import { PrivacyText, usePrivacy } from '@renderer/features/privacy/PrivacyNotice';
+import { PrivacyText, usePrivacy, useSetClaudeUpdateCheck } from '@renderer/features/privacy/PrivacyNotice';
 import { ExtensionsSection } from '@renderer/features/extensions/ExtensionsSection';
 import { AppUpdateSection } from '@renderer/features/app-update/AppUpdateSection';
 import { BackupSection } from '@renderer/features/backup/BackupSection';
@@ -308,10 +308,35 @@ function DataFolders() {
 }
 
 function Privacy() {
-  const acceptedAt = usePrivacy().data?.acceptedAt;
+  const privacy = usePrivacy().data;
+  const acceptedAt = privacy?.acceptedAt;
+  const setUpdateCheck = useSetClaudeUpdateCheck();
   return (
     <Section title="Privacidade">
       <PrivacyText />
+      {privacy && (
+        <label className="mt-4 flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={privacy.claudeUpdateCheck}
+            disabled={setUpdateCheck.isPending}
+            onChange={(e) => setUpdateCheck.mutate(e.target.checked)}
+            className="mt-1 accent-accent"
+            data-testid="privacy-claude-update-check"
+          />
+          <span>
+            Avisar quando sair versão nova do Claude Code
+            <span className="block text-xs text-muted">
+              Consulta o registro público do npm no máximo a cada 6 horas. Nenhum dado seu é enviado.
+            </span>
+          </span>
+        </label>
+      )}
+      {setUpdateCheck.isError && (
+        <p role="alert" className="mt-2 text-xs text-danger">
+          Não foi possível salvar: {setUpdateCheck.error.message}
+        </p>
+      )}
       {acceptedAt && (
         <p className="mt-3 text-xs text-muted">
           Aviso confirmado em {new Date(acceptedAt).toLocaleDateString('pt-BR')}.

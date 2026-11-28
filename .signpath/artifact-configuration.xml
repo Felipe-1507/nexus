@@ -3,10 +3,15 @@
   Configuração de artefato do SignPath (slug "instalador"). Cole este conteúdo em
   SignPath → Projeto "nexus" → Artifact configurations → "instalador".
   O artefato que o GitHub Actions envia é um .zip com o instalador NSIS na raiz; só ele é assinado.
+  Restrições de metadados: o SignPath só assina se o instalador se chamar "Nexus" e trouxer a versão do release
+  (o parâmetro "version", que o workflow manda a partir do package.json).
 -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
   <zip-file>
-    <pe-file path="*-instalador.exe">
+    <pe-file path="Nexus-${version}-instalador.exe" product-name="Nexus" product-version="${version}" file-version="${version}">
       <authenticode-sign />
     </pe-file>
   </zip-file>
