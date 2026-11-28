@@ -31,12 +31,34 @@ export function openWelcome(due: WelcomeDue, workspaceId: string): void {
   layout.setView('galaxy');
 }
 
-/** Resumo do período; só roda com a tela aberta. */
+/**
+ * Resumo do período; só roda com a tela aberta. O texto local chega na hora; com o Claude ligado, uma segunda busca
+ * traz o texto dele e substitui o local quando ficar pronto (a tela nunca espera a IA).
+ */
 export function useWelcomeRecap(workspaceId: string, since: string, label: string) {
-  return useQuery({
-    queryKey: welcomeKeys.recap(since),
-    queryFn: () => invoke('welcome:recap', { workspaceId, since, label }),
+  const ai = useWelcomeSettings().data?.ai ?? false;
+  const local = useQuery({
+    queryKey: [...welcomeKeys.recap(since), 'local'],
+    queryFn: () => invoke('welcome:recap', { workspaceId, since, label, ai: false }),
     staleTime: Infinity,
     gcTime: 0,
   });
+  const claude = useQuery({
+    queryKey: [...welcomeKeys.recap(since), 'claude'],
+    queryFn: () => invoke('welcome:recap', { workspaceId, since, label, ai: true }),
+    enabled: ai && local.isSuccess && local.data.items.length > 0,
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+  });
+  const data = claude.data ?? local.data;
+  return {
+    data,
+    isPending: local.isPending,
+    isError: local.isError,
+    error: local.error,
+    isSuccess: local.isSuccess,
+    /** O Claude ainda está reescrevendo o texto. */
+    refining: claude.isFetching,
+  };
 }

@@ -31,13 +31,21 @@ describe('abertura animada', () => {
 describe('abertura da marca', () => {
   const dir = path.resolve('build', 'intro');
 
-  it('a página desenha a logo e o nome só com SVG e CSS: sem script, sem vídeo e com CSP que bloqueia o resto', () => {
+  it('a página e o vídeo existem, a página toca o vídeo sem script e o CSP libera só mídia local', () => {
+    expect(fs.statSync(path.join(dir, 'intro.mp4')).size).toBeGreaterThan(10_000);
     const html = fs.readFileSync(path.join(dir, 'splash.html'), 'utf8');
-    expect(html).not.toMatch(/<script|<video|<img/i);
-    expect(html).toContain("default-src 'none'; style-src 'unsafe-inline'");
-    expect(html).toMatch(/<svg[^>]+viewBox="0 0 1000 1000"/);
-    expect(html).toContain('>Nexus</text>');
-    expect(html).toContain('prefers-reduced-motion');
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain('src="intro.mp4"');
+    expect(html).toMatch(/autoplay/);
+    expect(html).toContain("default-src 'none'; media-src file:");
+    // Os controles do player aparecem sozinhos sem JavaScript: a página os esconde.
+    expect(html).toContain('::-webkit-media-controls');
+  });
+
+  it('com "reduzir movimento", a página troca o vídeo pela logo parada', () => {
+    const html = fs.readFileSync(path.join(dir, 'splash.html'), 'utf8');
+    expect(html).toMatch(/<svg class="still"/);
+    expect(html).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*video \{ display: none; \}/);
   });
 
   it('o instalador leva a pasta da abertura fora do ASAR', () => {

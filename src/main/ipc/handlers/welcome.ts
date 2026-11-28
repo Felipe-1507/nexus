@@ -15,7 +15,7 @@ export function welcomeHandlers(welcome: WelcomeService, suppressed: boolean): W
       const due = await welcome.due(force);
       return suppressed && !force ? { ...due, due: false } : due;
     },
-    'welcome:recap': ({ workspaceId, since, label }) => welcome.recap(workspaceId, since, label),
+    'welcome:recap': ({ workspaceId, since, label, ai }) => welcome.recap(workspaceId, since, label, ai ?? true),
     'welcome:seen': () => welcome.seen(),
   };
 }

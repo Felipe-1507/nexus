@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { BRAND } from '@shared/brand';
+import { appIconPath } from './app-icon';
 import { currentPalette, titleBarOverlay } from './theme';
 
 export interface MainWindowOptions {
@@ -18,8 +19,8 @@ export function createMainWindow({ preloadPath, url, devTools, reveal }: MainWin
     minHeight: 600,
     show: false,
     title: BRAND.productName,
-    // Só em desenvolvimento; o app instalado usa o ícone do executável.
-    ...(BRAND.icon ? { icon: BRAND.icon } : {}),
+    // Sempre: rodando pelo código, sem ele a barra de tarefas mostraria o ícone do Electron.
+    icon: appIconPath(),
     backgroundColor: currentPalette().background,
     // Barra de título desenhada pelo app; os botões minimizar/maximizar/fechar continuam nativos.
     titleBarStyle: 'hidden',

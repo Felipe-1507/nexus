@@ -86,7 +86,8 @@ export class WelcomeService {
     return null;
   }
 
-  async recap(workspaceId: string, sinceIso: string, label: string): Promise<WelcomeRecap> {
+  /** `ai = false`: só o texto local (rápido); a tela mostra ele na hora e troca pelo do Claude quando chegar. */
+  async recap(workspaceId: string, sinceIso: string, label: string, ai = true): Promise<WelcomeRecap> {
     const sinceMs = Date.parse(sinceIso);
     const projects = await this.deps.projects(workspaceId);
     const names = new Map(projects.map((p) => [p.id, p.name]));
@@ -108,7 +109,7 @@ export class WelcomeService {
     if (topics.length === 0) return { items: [], counts, source: 'local' };
 
     let summary: Map<string, string> | null = null;
-    if (this.deps.prefs.get().welcomeAi) {
+    if (ai && this.deps.prefs.get().welcomeAi) {
       try {
         const raw = await this.deps.summarize(RECAP_SYSTEM_PROMPT, factsPrompt(topics, label));
         if (raw) summary = parseSummary(raw);

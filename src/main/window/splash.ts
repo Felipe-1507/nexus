@@ -4,8 +4,10 @@ import { app, BrowserWindow } from 'electron';
 
 /** Tempo mínimo da abertura animada em SVG: o bastante para formar o logo, sem atrasar quem só quer trabalhar. */
 export const SPLASH_MIN_MS = 2_000;
-/** Duração da abertura da marca (build/intro/splash.html): a janela só some depois dela, e ela fica no último quadro. */
-export const INTRO_MS = 2_600;
+/** Duração do vídeo de abertura (build/intro/intro.mp4): a janela só some depois dele, e ele fica no último quadro. */
+export const INTRO_MS = 4_100;
+/** Janela do vídeo de abertura: 16:9, como o vídeo (1920×1080). */
+export const INTRO_SIZE = { width: 640, height: 360 } as const;
 const FADE_MS = 160;
 
 const HEX = /^#[0-9a-f]{6}/i;
@@ -105,13 +107,14 @@ export function introDir(): string {
 }
 
 /**
- * Página da abertura da marca (a logo do Nexus se montando, em SVG e CSS, sem script), se ela existir e a marca for a
- * padrão: a página traz a logo e o nome "Nexus" desenhados.
+ * Página do vídeo de abertura (a logo do Nexus se montando), se ela e o vídeo existirem e a marca for a padrão: o vídeo
+ * traz a logo do Nexus. Com "reduzir movimento", a página mostra a logo parada no lugar do vídeo.
  */
 export function introPage(isDefaultBrand: boolean): string | null {
   if (!isDefaultBrand) return null;
-  const page = path.join(introDir(), 'splash.html');
-  return fs.existsSync(page) ? page : null;
+  const dir = introDir();
+  const page = path.join(dir, 'splash.html');
+  return fs.existsSync(page) && fs.existsSync(path.join(dir, 'intro.mp4')) ? page : null;
 }
 
 export interface Splash {
@@ -119,7 +122,10 @@ export interface Splash {
   finish(showMain: () => void): void;
 }
 
-/** Janela quadrada e sem moldura no centro da tela, aberta antes de tudo. Sem preload, sem Node e sem JavaScript. */
+/**
+ * Janela sem moldura no centro da tela, aberta antes de tudo (16:9 com o vídeo, quadrada na animação genérica). Sem
+ * preload, sem Node e sem JavaScript.
+ */
 export function openSplash({
   accent,
   name,
@@ -133,8 +139,8 @@ export function openSplash({
   video?: string | null;
 }): Splash {
   const win = new BrowserWindow({
-    width: video ? 420 : 260,
-    height: video ? 420 : 260,
+    width: video ? INTRO_SIZE.width : 260,
+    height: video ? INTRO_SIZE.height : 260,
     center: true,
     frame: false,
     transparent: true,

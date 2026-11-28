@@ -88,6 +88,7 @@ import { startMarker, takePreviousMarker } from './platform/run-marker';
 import { createWatcher } from './fs/watcher';
 import { createBackgroundMode, type BackgroundMode } from './window/background';
 import { createMainWindow } from './window/main-window';
+import { appIconPath } from './window/app-icon';
 import { introPage, openSplash, type Splash } from './window/splash';
 import { createOriginGuard } from './window/origin';
 import { watchWindowHealth } from './window/recovery';
@@ -198,7 +199,7 @@ function bootstrap(): void {
       : openSplash({
           accent: activePalette().dark.accent,
           name: BRAND.productName,
-          icon: BRAND.icon,
+          icon: appIconPath(),
           // O vídeo traz o nome "Nexus" desenhado: só vale para a marca padrão.
           video: introPage(BRAND.productName === 'Nexus'),
         });
@@ -617,7 +618,7 @@ function bootstrap(): void {
 
   // Segundo plano: fechar a janela só a esconde; o ícone da barra de notificação reabre ou fecha de verdade.
   background = createBackgroundMode({
-    iconPath: trayIconPath(),
+    iconPath: appIconPath(),
     productName: BRAND.productName,
     runningCount: () => sessions?.runningCount() ?? 0,
     confirm: (options) => dialog.showMessageBox(options),
@@ -649,11 +650,6 @@ function showMainWindow(): void {
   win.focus();
 }
 
-/** Ícone do aplicativo para a barra de notificação: o do pacote instalado, ou o do repositório em desenvolvimento. */
-function trayIconPath(): string {
-  if (app.isPackaged) return path.join(process.resourcesPath, 'icon.png');
-  return BRAND.icon ?? path.join(app.getAppPath(), 'build', 'icon.png');
-}
 
 function openWindow(splash: Splash | null): void {
   const win = createMainWindow({

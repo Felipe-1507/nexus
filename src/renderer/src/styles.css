@@ -241,7 +241,7 @@ body {
 /* Tela de boas-vindas: as linhas surgem uma a uma (o atraso vem de cada linha). */
 .welcome-line {
   opacity: 0;
-  animation: welcome-in 0.7s ease-out forwards;
+  animation: welcome-in 0.35s ease-out forwards;
 }
 @keyframes welcome-in {
   from {

@@ -97,13 +97,15 @@ test('abertura animada: janelinha no centro antes, e depois só a janela princip
     env: { ...env, NEXUS_USER_DATA_DIR: userData, NEXUS_CLAUDE_CLI: path.join(userData, 'sem-claude', 'claude.exe') },
   });
   try {
-    // A primeira janela é a abertura: quadrada, sem moldura, com a logo da marca se montando (SVG e CSS, sem JavaScript).
+    // A primeira janela é a abertura: 16:9, sem moldura, tocando o vídeo da marca (sem JavaScript).
     const first = await splashApp.firstWindow();
     expect(first.url()).toMatch(/splash\.html$/);
-    await expect(first.locator('svg[aria-label="Nexus abrindo"]')).toBeVisible();
-    await expect(first.locator('text', { hasText: 'Nexus' })).toBeVisible();
+    const video = first.locator('video');
+    await expect(video).toBeVisible();
+    await expect(video).toHaveAttribute('src', 'intro.mp4');
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState >= 2 && !v.error)).toBe(true);
     const size = await splashApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.getSize()));
-    expect(size.some(([w, h]) => w === 420 && h === 420)).toBe(true);
+    expect(size.some(([w, h]) => w === 640 && h === 360)).toBe(true);
 
     // A janela principal aparece e a abertura some.
     await expect

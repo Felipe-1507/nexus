@@ -167,7 +167,13 @@ export const ipcContract = {
   'welcome:due': { input: z.object({ force: z.boolean() }), output: welcomeDueSchema },
   /** O resumo do período (pode levar alguns segundos quando o Claude reescreve o texto). */
   'welcome:recap': {
-    input: z.object({ workspaceId: z.uuid(), since: z.string().max(40), label: z.string().max(60) }),
+    input: z.object({
+      workspaceId: z.uuid(),
+      since: z.string().max(40),
+      label: z.string().max(60),
+      /** false = só o texto local, na hora (o do Claude vem depois, numa segunda chamada). */
+      ai: z.boolean().optional(),
+    }),
     output: welcomeRecapSchema,
   },
   /** Marca a tela de hoje como vista. */
